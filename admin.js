@@ -10,7 +10,14 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-firebase.initializeApp(firebaseConfig);
+try {
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+} catch (error) {
+    console.error("Firebase initialization error:", error);
+}
+
 const auth = firebase.auth();
 const db = firebase.firestore();
 const storage = firebase.storage();
@@ -18,6 +25,7 @@ const storage = firebase.storage();
 // Global Variables
 let currentUser = null;
 let userRole = null;
+let userData = null;
 const MASTER_ADMIN_EMAIL = "ebadot.hossen@carrybee.com";
 
 // DOM Elements
@@ -99,7 +107,9 @@ function initializeDate() {
         day: 'numeric' 
     };
     const dateString = today.toLocaleDateString('bn-BD', options);
-    currentDateSpan.textContent = dateString;
+    if (currentDateSpan) {
+        currentDateSpan.textContent = dateString;
+    }
     
     // Set date inputs to today (and disable past dates)
     const todayString = today.toISOString().split('T')[0];
@@ -119,19 +129,27 @@ function initializeDate() {
 
 // Show Loading
 function showLoading() {
-    loadingOverlay.classList.remove('hidden');
+    if (loadingOverlay) {
+        loadingOverlay.classList.remove('hidden');
+    }
 }
 
 // Hide Loading
 function hideLoading() {
-    loadingOverlay.classList.add('hidden');
+    if (loadingOverlay) {
+        loadingOverlay.classList.add('hidden');
+    }
 }
 
 // Show Toast Message
 function showToast(message, type = 'success') {
+    if (!messageToast || !toastMessage) return;
+    
     const toastIcon = messageToast.querySelector('i');
-    toastIcon.className = type === 'success' ? 'fas fa-check-circle' : 'fas fa-exclamation-circle';
-    toastIcon.style.color = type === 'success' ? '#28a745' : '#dc3545';
+    if (toastIcon) {
+        toastIcon.className = type === 'success' ? 'fas fa-check-circle' : 'fas fa-exclamation-circle';
+        toastIcon.style.color = type === 'success' ? '#28a745' : '#dc3545';
+    }
     
     toastMessage.textContent = message;
     messageToast.classList.remove('hidden');
@@ -147,6 +165,8 @@ function showToast(message, type = 'success') {
 
 // Show Error Message
 function showError(message) {
+    if (!loginError) return;
+    
     loginError.textContent = message;
     loginError.classList.add('show');
     
@@ -155,13 +175,14 @@ function showError(message) {
     }, 5000);
 }
 
-// Check User Role
+// Check User Role and Create User Document
 async function checkUserRole(user) {
     try {
         const userDoc = await db.collection('users').doc(user.uid).get();
         
         if (userDoc.exists) {
-            return userDoc.data().role;
+            userData = userDoc.data();
+            return userData.role;
         } else {
             // First time login - determine role
             let role = 'visitor';
@@ -188,14 +209,17 @@ async function checkUserRole(user) {
             }
             
             // Create user document
-            await db.collection('users').doc(user.uid).set({
+            userData = {
                 email: user.email,
                 role: role,
                 status: role === 'visitor' ? 'pending' : 'active',
-                name: user.displayName || '',
+                name: user.displayName || user.email.split('@')[0],
+                hub: '',
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 lastLogin: firebase.firestore.FieldValue.serverTimestamp()
-            });
+            };
+            
+            await db.collection('users').doc(user.uid).set(userData);
             
             return role;
         }
@@ -210,6 +234,9 @@ async function googleLogin() {
     try {
         showLoading();
         const provider = new firebase.auth.GoogleAuthProvider();
+        provider.addScope('email');
+        provider.addScope('profile');
+        
         const result = await auth.signInWithPopup(provider);
         
         const user = result.user;
@@ -217,6 +244,11 @@ async function googleLogin() {
         
         currentUser = user;
         userRole = role;
+        
+        // Update last login time
+        await db.collection('users').doc(user.uid).update({
+            lastLogin: firebase.firestore.FieldValue.serverTimestamp()
+        });
         
         // Show appropriate UI based on role
         updateUIForRole();
@@ -232,7 +264,13 @@ async function googleLogin() {
         
     } catch (error) {
         console.error('Login error:', error);
-        showError(error.message);
+        if (error.code === 'auth/popup-blocked') {
+            showError('পপআপ ব্লক করা আছে। দয়া করে পপআপ অনুমতি দিন।');
+        } else if (error.code === 'auth/cancelled-popup-request') {
+            showError('লগইন বাতিল করা হয়েছে।');
+        } else {
+            showError('লগইন ত্রুটি: ' + error.message);
+        }
     } finally {
         hideLoading();
     }
@@ -245,14 +283,16 @@ async function logout() {
         await auth.signOut();
         currentUser = null;
         userRole = null;
+        userData = null;
         
         dashboardPage.classList.add('hidden');
         loginPage.classList.remove('hidden');
+        loginError.classList.remove('show');
         
         showToast('সফলভাবে লগআউট হয়েছে!', 'success');
     } catch (error) {
         console.error('Logout error:', error);
-        showError(error.message);
+        showError('লগআউট ত্রুটি: ' + error.message);
     } finally {
         hideLoading();
     }
@@ -260,36 +300,78 @@ async function logout() {
 
 // Update UI based on user role
 function updateUIForRole() {
-    adminEmailSpan.textContent = currentUser.email;
+    if (!currentUser) return;
     
-    if (userRole === 'master_admin') {
-        adminRoleSpan.textContent = 'মাস্টার অ্যাডমিন';
-        adminRoleSpan.style.background = '#667eea';
-        adminMenu.classList.remove('hidden');
-        zoneMenu.classList.remove('hidden');
-    } else if (userRole === 'regular_admin') {
-        adminRoleSpan.textContent = 'রেগুলার অ্যাডমিন';
-        adminRoleSpan.style.background = '#28a745';
-        adminMenu.classList.add('hidden');
-        zoneMenu.classList.add('hidden');
-    } else {
-        adminRoleSpan.textContent = 'ভিজিটর';
-        adminRoleSpan.style.background = '#ffc107';
-        // Visitors shouldn't see admin dashboard
-        logout();
-        showError('আপনি অ্যাডমিন নন। ভিজিটর পেজে যান।');
+    if (adminEmailSpan) {
+        adminEmailSpan.textContent = currentUser.email;
+    }
+    
+    if (adminRoleSpan) {
+        if (userRole === 'master_admin') {
+            adminRoleSpan.textContent = 'মাস্টার অ্যাডমিন';
+            adminRoleSpan.className = 'user-role master-admin';
+            if (adminMenu) adminMenu.classList.remove('hidden');
+            if (zoneMenu) zoneMenu.classList.remove('hidden');
+        } else if (userRole === 'regular_admin') {
+            adminRoleSpan.textContent = 'রেগুলার অ্যাডমিন';
+            adminRoleSpan.className = 'user-role regular-admin';
+            if (adminMenu) adminMenu.classList.add('hidden');
+            if (zoneMenu) zoneMenu.classList.add('hidden');
+        } else {
+            adminRoleSpan.textContent = 'ভিজিটর';
+            adminRoleSpan.className = 'user-role visitor';
+            // Visitors shouldn't see admin dashboard
+            logout();
+            showError('আপনি অ্যাডমিন নন। ভিজিটর পেজে যান।');
+            return;
+        }
     }
 }
 
 // Initialize Dashboard
-async function initializeDashboard() {
+function initializeDashboard() {
     initializeDate();
     loadDashboardStats();
     loadZones();
     loadRecentActivities();
     loadRecentUploads();
-    loadAdmins();
+    if (userRole === 'master_admin') {
+        loadAdmins();
+    }
     loadVisitorRequests();
+    
+    // Set up real-time listeners
+    setupRealtimeListeners();
+}
+
+// Setup Real-time Listeners
+function setupRealtimeListeners() {
+    // Listen for zones changes
+    db.collection('zones')
+        .where('status', '==', 'active')
+        .onSnapshot((snapshot) => {
+            loadZones();
+            loadDashboardStats();
+        });
+    
+    // Listen for uploads changes
+    db.collection('uploads')
+        .orderBy('uploadedAt', 'desc')
+        .limit(10)
+        .onSnapshot((snapshot) => {
+            loadRecentUploads();
+            loadDashboardStats();
+        });
+    
+    // Listen for user changes (for admins and visitors)
+    db.collection('users')
+        .onSnapshot((snapshot) => {
+            loadDashboardStats();
+            if (userRole === 'master_admin') {
+                loadAdmins();
+            }
+            loadVisitorRequests(visitorFilter ? visitorFilter.value : 'all');
+        });
 }
 
 // Load Dashboard Stats
@@ -299,28 +381,36 @@ async function loadDashboardStats() {
         const zonesSnapshot = await db.collection('zones')
             .where('status', '==', 'active')
             .get();
-        totalZonesSpan.textContent = zonesSnapshot.size;
+        if (totalZonesSpan) {
+            totalZonesSpan.textContent = zonesSnapshot.size;
+        }
         
         // Total Active Admins
         const adminsSnapshot = await db.collection('users')
             .where('role', 'in', ['master_admin', 'regular_admin'])
             .where('status', '==', 'active')
             .get();
-        totalAdminsSpan.textContent = adminsSnapshot.size;
+        if (totalAdminsSpan) {
+            totalAdminsSpan.textContent = adminsSnapshot.size;
+        }
         
         // Pending Visitor Requests
         const pendingSnapshot = await db.collection('users')
             .where('role', '==', 'visitor')
             .where('status', '==', 'pending')
             .get();
-        pendingRequestsSpan.textContent = pendingSnapshot.size;
+        if (pendingRequestsSpan) {
+            pendingRequestsSpan.textContent = pendingSnapshot.size;
+        }
         
         // Today's Uploads
         const today = new Date().toISOString().split('T')[0];
         const uploadsSnapshot = await db.collection('uploads')
             .where('uploadDate', '==', today)
             .get();
-        todayUploadsSpan.textContent = uploadsSnapshot.size;
+        if (todayUploadsSpan) {
+            todayUploadsSpan.textContent = uploadsSnapshot.size;
+        }
         
     } catch (error) {
         console.error('Error loading stats:', error);
@@ -335,20 +425,22 @@ async function loadZones() {
             .orderBy('createdAt', 'desc')
             .get();
         
-        zonesList.innerHTML = '';
-        
-        if (zonesSnapshot.empty) {
-            zonesList.innerHTML = '<div class="empty-state">কোন Zone পাওয়া যায়নি</div>';
-        } else {
-            zonesSnapshot.forEach(doc => {
-                const zone = doc.data();
-                const zoneItem = createZoneItem(doc.id, zone);
-                zonesList.appendChild(zoneItem);
-            });
+        if (zonesList) {
+            zonesList.innerHTML = '';
+            
+            if (zonesSnapshot.empty) {
+                zonesList.innerHTML = '<div class="empty-state">কোন Zone পাওয়া যায়নি</div>';
+            } else {
+                zonesSnapshot.forEach(doc => {
+                    const zone = doc.data();
+                    const zoneItem = createZoneItem(doc.id, zone);
+                    zonesList.appendChild(zoneItem);
+                });
+            }
         }
         
         // Populate zone select for file upload
-        populateZoneSelects();
+        populateZoneSelects(zonesSnapshot);
         
     } catch (error) {
         console.error('Error loading zones:', error);
@@ -361,10 +453,10 @@ function createZoneItem(id, zone) {
     div.className = 'zone-item';
     div.innerHTML = `
         <div class="zone-item-info">
-            <div class="zone-name">${zone.name}</div>
+            <div class="zone-name">${zone.name || 'No Name'}</div>
             ${zone.description ? `<div class="zone-desc">${zone.description}</div>` : ''}
             <div class="zone-meta">
-                <small>আইডি: ${id}</small>
+                <small>আইডি: ${id.substring(0, 8)}...</small>
             </div>
         </div>
         ${userRole === 'master_admin' ? `
@@ -382,9 +474,29 @@ function createZoneItem(id, zone) {
 }
 
 // Populate Zone Selects for File Upload
-function populateZoneSelects() {
-    // This will be populated when zones are loaded
-    // For now, we'll add a listener to refresh when zones are loaded
+function populateZoneSelects(zonesSnapshot) {
+    if (!morningZoneSelect || !finalZoneSelect) return;
+    
+    // Clear existing options except first
+    while (morningZoneSelect.options.length > 1) {
+        morningZoneSelect.remove(1);
+    }
+    while (finalZoneSelect.options.length > 1) {
+        finalZoneSelect.remove(1);
+    }
+    
+    if (zonesSnapshot && !zonesSnapshot.empty) {
+        zonesSnapshot.forEach(doc => {
+            const zone = doc.data();
+            const option1 = document.createElement('option');
+            option1.value = doc.id;
+            option1.textContent = zone.name;
+            morningZoneSelect.appendChild(option1.cloneNode(true));
+            
+            const option2 = option1.cloneNode(true);
+            finalZoneSelect.appendChild(option2);
+        });
+    }
 }
 
 // Add/Edit Zone
@@ -392,9 +504,17 @@ async function saveZone(e) {
     e.preventDefault();
     
     const zoneId = zoneIdInput.value;
+    const zoneName = zoneNameInput.value.trim();
+    const zoneDescription = zoneDescriptionInput.value.trim();
+    
+    if (!zoneName) {
+        showToast('দয়া করে Zone নাম দিন!', 'error');
+        return;
+    }
+    
     const zoneData = {
-        name: zoneNameInput.value.trim(),
-        description: zoneDescriptionInput.value.trim(),
+        name: zoneName,
+        description: zoneDescription,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     
@@ -408,6 +528,7 @@ async function saveZone(e) {
         } else {
             // Add new zone
             zoneData.createdBy = currentUser.uid;
+            zoneData.createdByEmail = currentUser.email;
             zoneData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
             zoneData.status = 'active';
             
@@ -417,8 +538,6 @@ async function saveZone(e) {
         
         closeZoneModal.click();
         zoneForm.reset();
-        loadZones();
-        loadDashboardStats();
         
     } catch (error) {
         console.error('Error saving zone:', error);
@@ -437,10 +556,13 @@ async function editZone(zoneId) {
         if (zoneDoc.exists) {
             const zone = zoneDoc.data();
             zoneIdInput.value = zoneId;
-            zoneNameInput.value = zone.name;
+            zoneNameInput.value = zone.name || '';
             zoneDescriptionInput.value = zone.description || '';
             
-            document.getElementById('modalTitle').textContent = 'Zone এডিট করুন';
+            const modalTitle = document.getElementById('modalTitle');
+            if (modalTitle) {
+                modalTitle.textContent = 'Zone এডিট করুন';
+            }
             zoneModal.classList.remove('hidden');
         }
     } catch (error) {
@@ -459,12 +581,11 @@ async function deleteZone(zoneId) {
         showLoading();
         await db.collection('zones').doc(zoneId).update({
             status: 'inactive',
-            deletedAt: firebase.firestore.FieldValue.serverTimestamp()
+            deletedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            deletedBy: currentUser.uid
         });
         
         showToast('Zone সফলভাবে ডিলিট হয়েছে!', 'success');
-        loadZones();
-        loadDashboardStats();
     } catch (error) {
         console.error('Error deleting zone:', error);
         showToast('Zone ডিলিট করতে ত্রুটি হয়েছে!', 'error');
@@ -482,9 +603,9 @@ async function uploadFile(e, fileType) {
     const dateInput = fileType === 'morning' ? morningDateInput : finalDateInput;
     const fileInput = fileType === 'morning' ? morningFileInput : finalFileInput;
     
-    const zoneId = zoneSelect.value;
-    const uploadDate = dateInput.value;
-    const file = fileInput.files[0];
+    const zoneId = zoneSelect ? zoneSelect.value : '';
+    const uploadDate = dateInput ? dateInput.value : '';
+    const file = fileInput ? fileInput.files[0] : null;
     
     if (!zoneId) {
         showToast('দয়া করে Zone সিলেক্ট করুন!', 'error');
@@ -505,9 +626,18 @@ async function uploadFile(e, fileType) {
     
     // Check file type
     const validExtensions = ['.csv', '.xlsx', '.xls'];
-    const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
-    if (!validExtensions.includes(fileExtension)) {
-        showToast('শুধু CSV বা Excel ফাইল আপলোড করা যাবে!', 'error');
+    const fileName = file.name.toLowerCase();
+    const isValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
+    
+    if (!isValidExtension) {
+        showToast('শুধু CSV বা Excel ফাইল আপলোড করা যাবে! (csv, xlsx, xls)', 'error');
+        return;
+    }
+    
+    // Check file size (max 10MB)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+        showToast('ফাইল সাইজ 10MB এর বেশি হতে পারবে না!', 'error');
         return;
     }
     
@@ -522,61 +652,58 @@ async function uploadFile(e, fileType) {
         
         const zone = zoneDoc.data();
         
+        // Create unique filename
+        const timestamp = Date.now();
+        const uniqueFileName = `${fileType}_${zoneId}_${timestamp}_${file.name}`;
+        
         // Upload file to Firebase Storage
         const storageRef = storage.ref();
-        const fileRef = storageRef.child(`uploads/${zoneId}/${uploadDate}/${fileType}/${file.name}`);
-        const uploadTask = fileRef.put(file);
+        const fileRef = storageRef.child(`uploads/${zoneId}/${uploadDate}/${fileType}/${uniqueFileName}`);
         
-        // Monitor upload progress
-        uploadTask.on('state_changed',
-            (snapshot) => {
-                // Progress monitoring can be added here
-                const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                console.log('Upload is ' + progress + '% done');
-            },
-            (error) => {
-                throw error;
-            },
-            async () => {
-                // Get download URL
-                const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
-                
-                // Save upload record to Firestore
-                await db.collection('uploads').add({
-                    fileName: file.name,
-                    fileType: fileType,
-                    zoneId: zoneId,
-                    zoneName: zone.name,
-                    uploadDate: uploadDate,
-                    uploadedBy: currentUser.uid,
-                    uploadedByEmail: currentUser.email,
-                    uploadedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    fileSize: (file.size / 1024 / 1024).toFixed(2) + ' MB',
-                    downloadURL: downloadURL,
-                    status: 'uploaded'
-                });
-                
-                // Reset form
-                form.reset();
-                if (fileType === 'morning') {
-                    morningFileName.classList.remove('show');
-                } else {
-                    finalFileName.classList.remove('show');
-                }
-                
-                // Update UI
-                loadRecentUploads();
-                loadDashboardStats();
-                loadRecentActivities();
-                
-                showToast(`${fileType === 'morning' ? 'মর্নিং' : 'ফাইনাল'} ফাইল সফলভাবে আপলোড হয়েছে!`, 'success');
-                hideLoading();
-            }
-        );
+        // Upload file
+        await fileRef.put(file);
+        
+        // Get download URL
+        const downloadURL = await fileRef.getDownloadURL();
+        
+        // Save upload record to Firestore
+        await db.collection('uploads').add({
+            fileName: file.name,
+            originalName: file.name,
+            uniqueFileName: uniqueFileName,
+            fileType: fileType,
+            zoneId: zoneId,
+            zoneName: zone.name,
+            uploadDate: uploadDate,
+            uploadedBy: currentUser.uid,
+            uploadedByEmail: currentUser.email,
+            uploadedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            fileSize: (file.size / 1024 / 1024).toFixed(2) + ' MB',
+            downloadURL: downloadURL,
+            status: 'uploaded'
+        });
+        
+        // Reset form
+        form.reset();
+        if (fileType === 'morning' && morningFileName) {
+            morningFileName.classList.remove('show');
+            morningFileName.textContent = '';
+        } else if (fileType === 'final' && finalFileName) {
+            finalFileName.classList.remove('show');
+            finalFileName.textContent = '';
+        }
+        
+        // Reset file input
+        if (fileInput) {
+            fileInput.value = '';
+        }
+        
+        showToast(`${fileType === 'morning' ? 'মর্নিং' : 'ফাইনাল'} ফাইল সফলভাবে আপলোড হয়েছে!`, 'success');
         
     } catch (error) {
         console.error('Error uploading file:', error);
         showToast('ফাইল আপলোডে ত্রুটি হয়েছে: ' + error.message, 'error');
+    } finally {
         hideLoading();
     }
 }
@@ -589,16 +716,18 @@ async function loadRecentUploads() {
             .limit(10)
             .get();
         
-        uploadsList.innerHTML = '';
-        
-        if (uploadsSnapshot.empty) {
-            uploadsList.innerHTML = '<div class="empty-state">কোন আপলোড পাওয়া যায়নি</div>';
-        } else {
-            uploadsSnapshot.forEach(doc => {
-                const upload = doc.data();
-                const uploadItem = createUploadItem(doc.id, upload);
-                uploadsList.appendChild(uploadItem);
-            });
+        if (uploadsList) {
+            uploadsList.innerHTML = '';
+            
+            if (uploadsSnapshot.empty) {
+                uploadsList.innerHTML = '<div class="empty-state">কোন আপলোড পাওয়া যায়নি</div>';
+            } else {
+                uploadsSnapshot.forEach(doc => {
+                    const upload = doc.data();
+                    const uploadItem = createUploadItem(doc.id, upload);
+                    uploadsList.appendChild(uploadItem);
+                });
+            }
         }
         
     } catch (error) {
@@ -608,30 +737,36 @@ async function loadRecentUploads() {
 
 // Create Upload Item HTML
 function createUploadItem(id, upload) {
-    const date = new Date(upload.uploadedAt.toDate());
-    const timeString = date.toLocaleTimeString('bn-BD', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
-    });
+    let uploadedAt = 'এখন';
+    if (upload.uploadedAt && upload.uploadedAt.toDate) {
+        const date = upload.uploadedAt.toDate();
+        uploadedAt = date.toLocaleTimeString('bn-BD', { 
+            hour: '2-digit', 
+            minute: '2-digit',
+            hour12: true
+        });
+    }
     
     const div = document.createElement('div');
     div.className = 'upload-item';
     div.innerHTML = `
         <div class="upload-item-info">
             <div class="upload-name">
-                <strong>${upload.fileType === 'morning' ? '☀️ মর্নিং' : '🏁 ফাইনাল'}</strong> - ${upload.zoneName}
+                <strong>${upload.fileType === 'morning' ? '☀️ মর্নিং' : '🏁 ফাইনাল'}</strong> - ${upload.zoneName || 'Zone'}
             </div>
             <div class="upload-details">
-                ${upload.fileName} • ${upload.fileSize} • ${timeString}
+                ${upload.fileName} • ${upload.fileSize || '0 MB'} • ${uploadedAt}
             </div>
             <div class="upload-meta">
-                <small>আপলোড করেছেন: ${upload.uploadedByEmail}</small>
+                <small>তারিখ: ${upload.uploadDate} • আপলোড করেছেন: ${upload.uploadedByEmail || currentUser.email}</small>
             </div>
         </div>
         <div class="upload-actions">
-            <a href="${upload.downloadURL}" target="_blank" class="action-btn" style="background: #667eea; color: white;">
-                <i class="fas fa-download"></i> ডাউনলোড
-            </a>
+            ${upload.downloadURL ? `
+                <a href="${upload.downloadURL}" target="_blank" class="action-btn" style="background: #667eea; color: white;">
+                    <i class="fas fa-download"></i> ডাউনলোড
+                </a>
+            ` : ''}
         </div>
     `;
     return div;
@@ -640,25 +775,62 @@ function createUploadItem(id, upload) {
 // Load Recent Activities
 async function loadRecentActivities() {
     try {
-        // This would typically query an activities collection
-        // For now, we'll show a static message
-        activityList.innerHTML = `
-            <div class="activity-item">
-                <div class="activity-info">
-                    <div class="activity-text">সিস্টেম প্রস্তুত</div>
-                    <div class="activity-time">এখন</div>
-                </div>
-            </div>
-        `;
+        // Get recent uploads for activities
+        const uploadsSnapshot = await db.collection('uploads')
+            .orderBy('uploadedAt', 'desc')
+            .limit(5)
+            .get();
+        
+        if (activityList) {
+            activityList.innerHTML = '';
+            
+            if (uploadsSnapshot.empty) {
+                activityList.innerHTML = '<div class="empty-state">কোন কার্যক্রম পাওয়া যায়নি</div>';
+            } else {
+                uploadsSnapshot.forEach(doc => {
+                    const upload = doc.data();
+                    const activityItem = createActivityItem(upload);
+                    activityList.appendChild(activityItem);
+                });
+            }
+        }
         
     } catch (error) {
         console.error('Error loading activities:', error);
     }
 }
 
+// Create Activity Item HTML
+function createActivityItem(upload) {
+    let timeAgo = 'এখন';
+    if (upload.uploadedAt && upload.uploadedAt.toDate) {
+        const date = upload.uploadedAt.toDate();
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        
+        if (diffMins < 1) timeAgo = 'এখন';
+        else if (diffMins < 60) timeAgo = `${diffMins} মিনিট আগে`;
+        else if (diffMins < 1440) timeAgo = `${Math.floor(diffMins / 60)} ঘন্টা আগে`;
+        else timeAgo = `${Math.floor(diffMins / 1440)} দিন আগে`;
+    }
+    
+    const div = document.createElement('div');
+    div.className = 'activity-item';
+    div.innerHTML = `
+        <div class="activity-info">
+            <div class="activity-text">
+                <strong>${upload.uploadedByEmail || 'কেউ'}</strong> ${upload.fileType === 'morning' ? 'মর্নিং' : 'ফাইনাল'} ফাইল আপলোড করেছেন
+            </div>
+            <div class="activity-time">${timeAgo}</div>
+        </div>
+    `;
+    return div;
+}
+
 // Admin Management Functions
 async function loadAdmins() {
-    if (userRole !== 'master_admin') return;
+    if (userRole !== 'master_admin' || !adminsList) return;
     
     try {
         const adminsSnapshot = await db.collection('users')
@@ -685,6 +857,8 @@ async function loadAdmins() {
 
 // Create Admin Item HTML
 function createAdminItem(id, admin) {
+    const isCurrentUser = currentUser && currentUser.email === admin.email;
+    
     const div = document.createElement('div');
     div.className = 'admin-item';
     div.innerHTML = `
@@ -700,7 +874,7 @@ function createAdminItem(id, admin) {
                 </span>
             </div>
         </div>
-        ${currentUser.email !== admin.email ? `
+        ${!isCurrentUser ? `
             <div class="admin-actions">
                 <button class="action-btn ${admin.status === 'active' ? 'block-btn' : 'approve-btn'}" 
                         onclick="toggleAdminStatus('${id}', '${admin.status === 'active' ? 'block' : 'activate'}')">
@@ -725,12 +899,11 @@ async function toggleAdminStatus(adminId, action) {
         showLoading();
         await db.collection('users').doc(adminId).update({
             status: action === 'block' ? 'blocked' : 'active',
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedBy: currentUser.uid
         });
         
         showToast(`অ্যাডমিন সফলভাবে ${action === 'block' ? 'ব্লক' : 'আনব্লক'} হয়েছে!`, 'success');
-        loadAdmins();
-        loadDashboardStats();
         
     } catch (error) {
         console.error('Error toggling admin status:', error);
@@ -744,11 +917,19 @@ async function toggleAdminStatus(adminId, action) {
 async function addNewAdmin(e) {
     e.preventDefault();
     
-    const email = adminEmailInput.value.trim();
-    const role = document.querySelector('input[name="adminRole"]:checked').value;
+    const email = adminEmailInput ? adminEmailInput.value.trim() : '';
+    const role = document.querySelector('input[name="adminRole"]:checked') ? 
+                 document.querySelector('input[name="adminRole"]:checked').value : 'regular_admin';
     
     if (!email) {
         showToast('দয়া করে জিমেইল এড্রেস দিন!', 'error');
+        return;
+    }
+    
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        showToast('দয়া করে সঠিক জিমেইল এড্রেস দিন!', 'error');
         return;
     }
     
@@ -774,14 +955,14 @@ async function addNewAdmin(e) {
         });
         
         // Reset form
-        newAdminForm.reset();
-        addAdminForm.classList.add('hidden');
+        if (newAdminForm) newAdminForm.reset();
+        if (addAdminForm) addAdminForm.classList.add('hidden');
         
         showToast(`অ্যাডমিন ইনভাইট ${email} ইমেইলে পাঠানো হয়েছে!`, 'success');
         
     } catch (error) {
         console.error('Error adding admin:', error);
-        showToast('অ্যাডমিন যোগ করতে ত্রুটি হয়েছে!', 'error');
+        showToast('অ্যাডমিন যোগ করতে ত্রুটি হয়েছে: ' + error.message, 'error');
     } finally {
         hideLoading();
     }
@@ -800,16 +981,18 @@ async function loadVisitorRequests(filter = 'all') {
         
         const visitorsSnapshot = await query.get();
         
-        visitorsList.innerHTML = '';
-        
-        if (visitorsSnapshot.empty) {
-            visitorsList.innerHTML = '<div class="empty-state">কোন ভিজিটর রিকোয়েস্ট পাওয়া যায়নি</div>';
-        } else {
-            visitorsSnapshot.forEach(doc => {
-                const visitor = doc.data();
-                const visitorItem = createVisitorItem(doc.id, visitor);
-                visitorsList.appendChild(visitorItem);
-            });
+        if (visitorsList) {
+            visitorsList.innerHTML = '';
+            
+            if (visitorsSnapshot.empty) {
+                visitorsList.innerHTML = '<div class="empty-state">কোন ভিজিটর রিকোয়েস্ট পাওয়া যায়নি</div>';
+            } else {
+                visitorsSnapshot.forEach(doc => {
+                    const visitor = doc.data();
+                    const visitorItem = createVisitorItem(doc.id, visitor);
+                    visitorsList.appendChild(visitorItem);
+                });
+            }
         }
         
     } catch (error) {
@@ -819,8 +1002,11 @@ async function loadVisitorRequests(filter = 'all') {
 
 // Create Visitor Item HTML
 function createVisitorItem(id, visitor) {
-    const date = visitor.createdAt ? new Date(visitor.createdAt.toDate()) : new Date();
-    const dateString = date.toLocaleDateString('bn-BD');
+    let dateString = 'আজ';
+    if (visitor.createdAt && visitor.createdAt.toDate) {
+        const date = visitor.createdAt.toDate();
+        dateString = date.toLocaleDateString('bn-BD');
+    }
     
     const div = document.createElement('div');
     div.className = 'visitor-item';
@@ -888,8 +1074,6 @@ async function updateVisitorStatus(visitorId, status) {
         
         showToast(`ভিজিটর সফলভাবে ${status === 'approved' ? 'অনুমোদিত' : 
                                            status === 'rejected' ? 'প্রত্যাখ্যাত' : 'ব্লকড'} হয়েছে!`, 'success');
-        loadVisitorRequests(visitorFilter.value);
-        loadDashboardStats();
         
     } catch (error) {
         console.error('Error updating visitor status:', error);
@@ -899,14 +1083,42 @@ async function updateVisitorStatus(visitorId, status) {
     }
 }
 
-// Event Listeners
-document.addEventListener('DOMContentLoaded', () => {
+// Initialize Database (First Time Setup)
+async function initializeDatabase() {
+    try {
+        // Check if master admin exists
+        const masterQuery = await db.collection('users')
+            .where('email', '==', MASTER_ADMIN_EMAIL)
+            .get();
+        
+        if (masterQuery.empty) {
+            console.log('Master admin does not exist in database yet.');
+            console.log('Please login with master admin email first.');
+        }
+        
+        // Check if collections exist, create if not
+        const collections = ['zones', 'uploads', 'admin_invites'];
+        for (const collectionName of collections) {
+            const snapshot = await db.collection(collectionName).limit(1).get();
+            if (snapshot.empty) {
+                console.log(`Collection '${collectionName}' is empty (this is normal for first time)`);
+            }
+        }
+        
+    } catch (error) {
+        console.error('Error initializing database:', error);
+    }
+}
+
+// Event Listeners Setup
+function setupEventListeners() {
     // Initialize date
     initializeDate();
     
     // Check auth state
     auth.onAuthStateChanged(async (user) => {
         if (user) {
+            console.log('User logged in:', user.email);
             currentUser = user;
             userRole = await checkUserRole(user);
             
@@ -916,140 +1128,253 @@ document.addEventListener('DOMContentLoaded', () => {
                 loginPage.classList.add('hidden');
                 dashboardPage.classList.remove('hidden');
                 initializeDashboard();
+                
+                // Initialize database (first time setup)
+                await initializeDatabase();
             }
+        } else {
+            console.log('No user logged in');
+            currentUser = null;
+            userRole = null;
+            userData = null;
+            loginPage.classList.remove('hidden');
+            dashboardPage.classList.add('hidden');
         }
     });
     
     // Login button
-    googleLoginBtn.addEventListener('click', googleLogin);
+    if (googleLoginBtn) {
+        googleLoginBtn.addEventListener('click', googleLogin);
+    }
     
     // Logout button
-    logoutBtn.addEventListener('click', logout);
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', logout);
+    }
     
     // Menu toggle for mobile
-    menuToggle.addEventListener('click', () => {
-        sidebar.classList.toggle('show');
-    });
+    if (menuToggle && sidebar) {
+        menuToggle.addEventListener('click', () => {
+            sidebar.classList.toggle('show');
+        });
+    }
     
     // Menu navigation
-    menuItems.forEach(item => {
-        item.addEventListener('click', (e) => {
-            e.preventDefault();
-            
-            // Remove active class from all items
-            menuItems.forEach(i => i.classList.remove('active'));
-            sections.forEach(s => s.classList.remove('active'));
-            
-            // Add active class to clicked item
-            item.classList.add('active');
-            
-            // Show corresponding section
-            const section = item.getAttribute('data-section');
-            const sectionElement = document.getElementById(`${section}Section`);
-            if (sectionElement) {
-                sectionElement.classList.add('active');
-            }
-            
-            // Close sidebar on mobile
-            if (window.innerWidth <= 992) {
-                sidebar.classList.remove('show');
-            }
+    if (menuItems.length > 0) {
+        menuItems.forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                
+                // Remove active class from all items
+                menuItems.forEach(i => i.classList.remove('active'));
+                sections.forEach(s => s.classList.remove('active'));
+                
+                // Add active class to clicked item
+                item.classList.add('active');
+                
+                // Show corresponding section
+                const section = item.getAttribute('data-section');
+                const sectionElement = document.getElementById(`${section}Section`);
+                if (sectionElement) {
+                    sectionElement.classList.add('active');
+                }
+                
+                // Close sidebar on mobile
+                if (window.innerWidth <= 992) {
+                    sidebar.classList.remove('show');
+                }
+            });
         });
-    });
+    }
     
     // Zone Management
-    addZoneBtn.addEventListener('click', () => {
-        zoneForm.reset();
-        zoneIdInput.value = '';
-        document.getElementById('modalTitle').textContent = 'নতুন Zone যোগ করুন';
-        zoneModal.classList.remove('hidden');
-    });
+    if (addZoneBtn) {
+        addZoneBtn.addEventListener('click', () => {
+            zoneForm.reset();
+            zoneIdInput.value = '';
+            const modalTitle = document.getElementById('modalTitle');
+            if (modalTitle) {
+                modalTitle.textContent = 'নতুন Zone যোগ করুন';
+            }
+            zoneModal.classList.remove('hidden');
+        });
+    }
     
-    closeZoneModal.addEventListener('click', () => {
-        zoneModal.classList.add('hidden');
-        zoneForm.reset();
-    });
+    if (closeZoneModal) {
+        closeZoneModal.addEventListener('click', () => {
+            zoneModal.classList.add('hidden');
+            zoneForm.reset();
+        });
+    }
     
-    cancelZoneBtn.addEventListener('click', () => {
-        closeZoneModal.click();
-    });
+    if (cancelZoneBtn) {
+        cancelZoneBtn.addEventListener('click', () => {
+            zoneModal.classList.add('hidden');
+            zoneForm.reset();
+        });
+    }
     
-    zoneForm.addEventListener('submit', saveZone);
+    if (zoneForm) {
+        zoneForm.addEventListener('submit', saveZone);
+    }
     
     // File Upload
-    morningUploadForm.addEventListener('submit', (e) => uploadFile(e, 'morning'));
-    finalUploadForm.addEventListener('submit', (e) => uploadFile(e, 'final'));
+    if (morningUploadForm) {
+        morningUploadForm.addEventListener('submit', (e) => uploadFile(e, 'morning'));
+    }
+    
+    if (finalUploadForm) {
+        finalUploadForm.addEventListener('submit', (e) => uploadFile(e, 'final'));
+    }
     
     // File input handlers
-    morningFileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            morningFileName.textContent = file.name;
-            morningFileName.classList.add('show');
-        }
-    });
-    
-    finalFileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            finalFileName.textContent = file.name;
-            finalFileName.classList.add('show');
-        }
-    });
-    
-    // Drag and drop for file upload
-    [morningFileDrop, finalFileDrop].forEach(dropArea => {
-        dropArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            dropArea.style.borderColor = '#667eea';
-            dropArea.style.background = '#f0f7ff';
-        });
-        
-        dropArea.addEventListener('dragleave', () => {
-            dropArea.style.borderColor = '#ddd';
-            dropArea.style.background = '';
-        });
-        
-        dropArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropArea.style.borderColor = '#ddd';
-            dropArea.style.background = '';
-            
-            const file = e.dataTransfer.files[0];
-            if (file) {
-                const fileInput = dropArea.querySelector('input[type="file"]');
-                const dataTransfer = new DataTransfer();
-                dataTransfer.items.add(file);
-                fileInput.files = dataTransfer.files;
-                
-                // Trigger change event
-                fileInput.dispatchEvent(new Event('change'));
+    if (morningFileInput) {
+        morningFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file && morningFileName) {
+                morningFileName.textContent = `ফাইল: ${file.name}`;
+                morningFileName.classList.add('show');
             }
         });
-    });
+    }
+    
+    if (finalFileInput) {
+        finalFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file && finalFileName) {
+                finalFileName.textContent = `ফাইল: ${file.name}`;
+                finalFileName.classList.add('show');
+            }
+        });
+    }
+    
+    // Drag and drop for file upload
+    if (morningFileDrop) {
+        morningFileDrop.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            morningFileDrop.style.borderColor = '#667eea';
+            morningFileDrop.style.background = '#f0f7ff';
+        });
+        
+        morningFileDrop.addEventListener('dragleave', () => {
+            morningFileDrop.style.borderColor = '#ddd';
+            morningFileDrop.style.background = '';
+        });
+        
+        morningFileDrop.addEventListener('drop', (e) => {
+            e.preventDefault();
+            morningFileDrop.style.borderColor = '#ddd';
+            morningFileDrop.style.background = '';
+            
+            const file = e.dataTransfer.files[0];
+            if (file && morningFileInput) {
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                morningFileInput.files = dataTransfer.files;
+                
+                // Trigger change event
+                morningFileInput.dispatchEvent(new Event('change'));
+            }
+        });
+    }
+    
+    if (finalFileDrop) {
+        finalFileDrop.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            finalFileDrop.style.borderColor = '#667eea';
+            finalFileDrop.style.background = '#f0f7ff';
+        });
+        
+        finalFileDrop.addEventListener('dragleave', () => {
+            finalFileDrop.style.borderColor = '#ddd';
+            finalFileDrop.style.background = '';
+        });
+        
+        finalFileDrop.addEventListener('drop', (e) => {
+            e.preventDefault();
+            finalFileDrop.style.borderColor = '#ddd';
+            finalFileDrop.style.background = '';
+            
+            const file = e.dataTransfer.files[0];
+            if (file && finalFileInput) {
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                finalFileInput.files = dataTransfer.files;
+                
+                // Trigger change event
+                finalFileInput.dispatchEvent(new Event('change'));
+            }
+        });
+    }
     
     // Admin Management
-    addAdminBtn.addEventListener('click', () => {
-        addAdminForm.classList.remove('hidden');
-    });
+    if (addAdminBtn) {
+        addAdminBtn.addEventListener('click', () => {
+            if (addAdminForm) {
+                addAdminForm.classList.remove('hidden');
+            }
+        });
+    }
     
-    cancelAddAdmin.addEventListener('click', () => {
-        addAdminForm.classList.add('hidden');
-        newAdminForm.reset();
-    });
+    if (cancelAddAdmin) {
+        cancelAddAdmin.addEventListener('click', () => {
+            if (addAdminForm) {
+                addAdminForm.classList.add('hidden');
+            }
+            if (newAdminForm) {
+                newAdminForm.reset();
+            }
+        });
+    }
     
-    newAdminForm.addEventListener('submit', addNewAdmin);
+    if (newAdminForm) {
+        newAdminForm.addEventListener('submit', addNewAdmin);
+    }
     
     // Visitor Requests Filter
-    visitorFilter.addEventListener('change', (e) => {
-        loadVisitorRequests(e.target.value);
+    if (visitorFilter) {
+        visitorFilter.addEventListener('change', (e) => {
+            loadVisitorRequests(e.target.value);
+        });
+    }
+    
+    // Close modals on outside click
+    window.addEventListener('click', (e) => {
+        if (e.target === zoneModal) {
+            zoneModal.classList.add('hidden');
+            zoneForm.reset();
+        }
     });
+    
+    // Close sidebar when clicking outside on mobile
+    document.addEventListener('click', (e) => {
+        if (window.innerWidth <= 992 && sidebar && sidebar.classList.contains('show')) {
+            if (!sidebar.contains(e.target) && e.target !== menuToggle) {
+                sidebar.classList.remove('show');
+            }
+        }
+    });
+}
+
+// Make functions globally available for onclick handlers
+window.editZone = editZone;
+window.deleteZone = deleteZone;
+window.toggleAdminStatus = toggleAdminStatus;
+window.updateVisitorStatus = updateVisitorStatus;
+
+// Initialize the application when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    setupEventListeners();
+    console.log('Admin Panel Initialized');
+    
+    // Check if Firebase is properly initialized
+    if (!firebase.apps.length) {
+        console.error('Firebase not initialized!');
+        showError('Firebase initialization failed. Please check console.');
+    }
 });
 
-// Close modals on outside click
-window.addEventListener('click', (e) => {
-    if (e.target === zoneModal) {
-        zoneModal.classList.add('hidden');
-        zoneForm.reset();
-    }
+// Handle page unload
+window.addEventListener('beforeunload', () => {
+    // Clean up if needed
 });
