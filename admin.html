@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Courier Report System</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-storage-compat.js"></script>
+</head>
+<body>
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="spinner-overlay">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- Login Page -->
+    <div class="login-page" id="loginPage">
+        <div class="login-container">
+            <div class="login-card">
+                <div class="logo">
+                    <i class="fas fa-shipping-fast"></i>
+                    <h1>Courier Report System</h1>
+                </div>
+                <div class="login-form">
+                    <h2>Welcome Back</h2>
+                    <p>Sign in to access your dashboard</p>
+                    <button id="googleLoginBtn" class="google-btn">
+                        <i class="fab fa-google"></i>
+                        Sign in with Google
+                    </button>
+                    <div id="errorMessage" class="alert error"></div>
+                </div>
+                <div class="login-footer">
+                    <p>© 2024 Courier Report System. All rights reserved.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin/Visitor Page -->
+    <div class="dashboard-page" id="adminPage" style="display: none;">
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fas fa-shipping-fast"></i>
+                    <h2>Courier System</h2>
+                </div>
+                <button class="sidebar-toggle" id="sidebarToggle">
+                    <i class="fas fa-bars"></i>
+                </button>
+            </div>
+            
+            <div class="user-profile">
+                <img id="userAvatar" class="avatar" src="" alt="Avatar">
+                <div class="user-info">
+                    <h3 id="userName">Loading...</h3>
+                    <p id="userEmail">Loading...</p>
+                    <span class="user-role" id="userRole">Loading...</span>
+                </div>
+            </div>
+
+            <nav class="sidebar-menu" id="sidebarMenu">
+                <!-- Menu items will be dynamically added -->
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="logout-btn" id="logoutBtn">
+                    <i class="fas fa-sign-out-alt"></i>
+                    Logout
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content" id="mainContent">
+            <!-- Top Bar -->
+            <div class="top-bar">
+                <div class="breadcrumb" id="breadcrumb">
+                    <span>Dashboard</span>
+                </div>
+                <div class="top-bar-actions">
+                    <button class="notification-btn">
+                        <i class="fas fa-bell"></i>
+                        <span class="badge">3</span>
+                    </button>
+                    <div class="theme-toggle">
+                        <i class="fas fa-moon"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div class="content-area">
+                <!-- Add Admin Tab -->
+                <div class="tab-content active" id="addAdminTab" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-user-plus"></i> Add New Admin</h2>
+                            <p>Add new administrators to the system</p>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label for="adminEmail"><i class="fas fa-envelope"></i> Admin Email Address</label>
+                                <input type="email" id="adminEmail" placeholder="admin@example.com">
+                            </div>
+                            <button class="btn-primary" id="addAdminBtn">
+                                <i class="fas fa-plus"></i> Add Admin
+                            </button>
+                            <div id="addAdminMessage" class="alert"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Admin List Tab -->
+                <div class="tab-content" id="adminListTab" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-users-cog"></i> Admin Management</h2>
+                            <p>Manage all system administrators</p>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table id="adminsTable">
+                                    <thead>
+                                        <tr>
+                                            <th><i class="fas fa-envelope"></i> Email</th>
+                                            <th><i class="fas fa-user-tag"></i> Role</th>
+                                            <th><i class="fas fa-circle"></i> Status</th>
+                                            <th><i class="fas fa-cog"></i> Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="adminsList"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Zone Management Tab -->
+                <div class="tab-content" id="zoneManagementTab" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-map-marker-alt"></i> Zone Management</h2>
+                            <p>Add and manage delivery zones</p>
+                        </div>
+                        <div class="card-body">
+                            <div class="add-zone-form">
+                                <div class="form-group">
+                                    <label for="zoneName"><i class="fas fa-map-pin"></i> Zone Name</label>
+                                    <input type="text" id="zoneName" placeholder="Enter zone name (e.g., Dhaka North)">
+                                </div>
+                                <div class="form-group">
+                                    <label for="zoneCode"><i class="fas fa-hashtag"></i> Zone Code</label>
+                                    <input type="text" id="zoneCode" placeholder="Enter zone code (e.g., DN)">
+                                </div>
+                                <button class="btn-primary" id="addZoneBtn">
+                                    <i class="fas fa-plus"></i> Add Zone
+                                </button>
+                                <div id="zoneMessage" class="alert"></div>
+                            </div>
+
+                            <div class="zones-list">
+                                <h3><i class="fas fa-list"></i> Existing Zones</h3>
+                                <div class="zones-grid" id="zonesGrid">
+                                    <!-- Zones will be loaded here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- File Upload Tab -->
+                <div class="tab-content" id="fileUploadTab" style="display: none;">
+                    <div class="upload-container">
+                        <!-- Morning File Upload -->
+                        <div class="upload-card">
+                            <div class="upload-header">
+                                <div class="upload-icon">
+                                    <i class="fas fa-sun"></i>
+                                </div>
+                                <div class="upload-info">
+                                    <h3>Morning File Upload</h3>
+                                    <p>Upload daily morning report files</p>
+                                </div>
+                            </div>
+                            <div class="upload-body">
+                                <div class="form-group">
+                                    <label for="morningZone"><i class="fas fa-map-marker-alt"></i> Select Zone</label>
+                                    <select id="morningZone" class="form-select">
+                                        <option value="">Select a zone</option>
+                                        <!-- Zones will be populated dynamically -->
+                                    </select>
+                                </div>
+                                <div class="upload-area" onclick="document.getElementById('morningFile').click()">
+                                    <input type="file" id="morningFile" accept=".csv,.xlsx,.xls" style="display: none;">
+                                    <div class="upload-icon-large">
+                                        <i class="fas fa-cloud-upload-alt"></i>
+                                    </div>
+                                    <h4>Drop files here or click to upload</h4>
+                                    <p>Supports: CSV, XLSX, XLS files</p>
+                                    <div class="file-info" id="morningFileInfo"></div>
+                                </div>
+                                <button class="btn-upload" id="uploadMorningBtn">
+                                    <i class="fas fa-upload"></i> Upload Morning File
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Final File Upload -->
+                        <div class="upload-card">
+                            <div class="upload-header">
+                                <div class="upload-icon">
+                                    <i class="fas fa-flag-checkered"></i>
+                                </div>
+                                <div class="upload-info">
+                                    <h3>Final Assign File Upload</h3>
+                                    <p>Upload final assignment files</p>
+                                </div>
+                            </div>
+                            <div class="upload-body">
+                                <div class="form-group">
+                                    <label for="finalZone"><i class="fas fa-map-marker-alt"></i> Select Zone</label>
+                                    <select id="finalZone" class="form-select">
+                                        <option value="">Select a zone</option>
+                                        <!-- Zones will be populated dynamically -->
+                                    </select>
+                                </div>
+                                <div class="upload-area" onclick="document.getElementById('finalFile').click()">
+                                    <input type="file" id="finalFile" accept=".csv,.xlsx,.xls" style="display: none;">
+                                    <div class="upload-icon-large">
+                                        <i class="fas fa-cloud-upload-alt"></i>
+                                    </div>
+                                    <h4>Drop files here or click to upload</h4>
+                                    <p>Supports: CSV, XLSX, XLS files</p>
+                                    <div class="file-info" id="finalFileInfo"></div>
+                                </div>
+                                <button class="btn-upload" id="uploadFinalBtn">
+                                    <i class="fas fa-upload"></i> Upload Final File
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Recent Uploads -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-history"></i> Recent Uploads</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="recent-uploads" id="recentUploads">
+                                    <!-- Recent uploads will be loaded here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Visitor Requests Tab -->
+                <div class="tab-content" id="visitorRequestsTab" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-user-clock"></i> Visitor Requests</h2>
+                            <p>Approve or reject visitor registration requests</p>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table id="visitorsTable">
+                                    <thead>
+                                        <tr>
+                                            <th><i class="fas fa-user"></i> Visitor</th>
+                                            <th><i class="fas fa-building"></i> Hub</th>
+                                            <th><i class="fas fa-calendar"></i> Date</th>
+                                            <th><i class="fas fa-circle"></i> Status</th>
+                                            <th><i class="fas fa-cog"></i> Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="visitorsList"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Visitor Dashboard -->
+                <div class="tab-content active" id="visitorPage" style="display: none;">
+                    <div class="welcome-card">
+                        <div class="welcome-content">
+                            <div class="welcome-icon">
+                                <i class="fas fa-tachometer-alt"></i>
+                            </div>
+                            <div class="welcome-text">
+                                <h2>Welcome, <span id="visitorName">Visitor</span></h2>
+                                <p id="visitorStatus">Loading your dashboard...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="visitor-content" id="visitorContent">
+                        <!-- Visitor specific content will be loaded here -->
+                    </div>
+                </div>
+
+                <!-- Registration Form -->
+                <div class="tab-content active" id="registrationTab" style="display: none;">
+                    <div class="registration-card">
+                        <div class="registration-header">
+                            <div class="registration-icon">
+                                <i class="fas fa-user-check"></i>
+                            </div>
+                            <h2>Complete Your Registration</h2>
+                            <p>Please provide your details to complete registration</p>
+                        </div>
+                        <div class="registration-body">
+                            <div class="form-group">
+                                <label for="regEmail"><i class="fas fa-envelope"></i> Email Address</label>
+                                <input type="email" id="regEmail" readonly class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label for="regName"><i class="fas fa-user"></i> Full Name</label>
+                                <input type="text" id="regName" placeholder="Enter your full name" class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label for="regHub"><i class="fas fa-building"></i> Hub Name</label>
+                                <input type="text" id="regHub" placeholder="Enter your hub name" class="form-control">
+                            </div>
+                            <button class="btn-submit" id="submitRegistrationBtn">
+                                <i class="fas fa-paper-plane"></i> Submit Registration
+                            </button>
+                            <div id="registrationMessage" class="alert"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
