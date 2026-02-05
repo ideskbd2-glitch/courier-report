@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Courier Report System</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-storage-compat.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="login-container" id="loginPage">
+            <h1>📦 Courier Report System</h1>
+            <div id="loginForm">
+                <h2>Login with Google</h2>
+                <button id="googleLoginBtn" class="google-btn">
+                    <img src="https://www.google.com/favicon.ico" alt="Google">
+                    Sign in with Google
+                </button>
+            </div>
+            <div id="errorMessage" class="message error"></div>
+        </div>
+
+        <div class="admin-container" id="adminPage" style="display: none;">
+            <div class="header">
+                <h1>Admin Panel</h1>
+                <div class="user-info">
+                    <img id="userAvatar" class="avatar" src="" alt="Avatar">
+                    <span id="userEmail"></span>
+                    <button class="logout-btn" id="logoutBtn">Logout</button>
+                </div>
+            </div>
+
+            <div class="tabs" id="tabsContainer"></div>
+
+            <div class="tab-content active" id="addAdminTab" style="display: none;">
+                <h2>➕ Add New Admin</h2>
+                <div class="form-group">
+                    <label for="adminEmail">Admin Email Address:</label>
+                    <input type="email" id="adminEmail" placeholder="Enter email address">
+                </div>
+                <button class="submit-btn" id="addAdminBtn">Add Admin</button>
+                <div id="addAdminMessage" class="message"></div>
+            </div>
+
+            <div class="tab-content" id="adminListTab" style="display: none;">
+                <h2>👥 All Admins</h2>
+                <div class="table-container">
+                    <table id="adminsTable">
+                        <thead>
+                            <tr>
+                                <th>Email</th>
+                                <th>Role</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminsList"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="tab-content" id="fileUploadTab" style="display: none;">
+                <h2>📁 Upload Files</h2>
+                
+                <div class="upload-section">
+                    <h3>1. Morning File</h3>
+                    <div class="upload-box" onclick="document.getElementById('morningFile').click()">
+                        <input type="file" id="morningFile" accept=".csv,.xlsx,.xls" style="display: none;">
+                        <div class="upload-icon">📄</div>
+                        <div class="upload-text">Click to upload Morning File</div>
+                        <div class="file-info">Supports: .csv, .xlsx, .xls</div>
+                    </div>
+                    <div id="morningFileInfo" class="file-info"></div>
+                    <button class="submit-btn" id="uploadMorningBtn">Upload Morning File</button>
+                </div>
+
+                <div class="upload-section">
+                    <h3>2. Final Assign File</h3>
+                    <div class="upload-box" onclick="document.getElementById('finalFile').click()">
+                        <input type="file" id="finalFile" accept=".csv,.xlsx,.xls" style="display: none;">
+                        <div class="upload-icon">📄</div>
+                        <div class="upload-text">Click to upload Final Assign File</div>
+                        <div class="file-info">Supports: .csv, .xlsx, .xls</div>
+                    </div>
+                    <div id="finalFileInfo" class="file-info"></div>
+                    <button class="submit-btn" id="uploadFinalBtn">Upload Final File</button>
+                </div>
+            </div>
+
+            <div class="tab-content" id="visitorRequestsTab" style="display: none;">
+                <h2>👥 Visitor Requests</h2>
+                <div class="table-container">
+                    <table id="visitorsTable">
+                        <thead>
+                            <tr>
+                                <th>Email</th>
+                                <th>Name</th>
+                                <th>Hub Name</th>
+                                <th>Status</th>
+                                <th>Request Date</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="visitorsList"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="tab-content active" id="visitorPage" style="display: none;">
+                <h2>👋 Welcome Visitor</h2>
+                <p>You can view reports here once approved by admin.</p>
+                <div id="visitorContent"></div>
+            </div>
+
+            <div class="tab-content active" id="registrationTab" style="display: none;">
+                <div class="registration-form">
+                    <h2>📝 Complete Registration</h2>
+                    <div class="form-group">
+                        <label for="regEmail">Email:</label>
+                        <input type="email" id="regEmail" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label for="regName">Full Name:</label>
+                        <input type="text" id="regName" placeholder="Enter your full name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="regHub">Hub Name:</label>
+                        <input type="text" id="regHub" placeholder="Enter your hub name" required>
+                    </div>
+                    <button class="submit-btn" id="submitRegistrationBtn">Submit Registration</button>
+                    <div id="registrationMessage" class="message"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
