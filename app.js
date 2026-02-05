@@ -1,4 +1,4 @@
-// Firebase configuration
+// Firebase Configuration
 const firebaseConfig = {
     apiKey: "AIzaSyBoInYELD9MbXamDyQPN_OSyVBaFMouSLA",
     authDomain: "courier-report-199b7.firebaseapp.com",
@@ -17,7 +17,7 @@ const storage = firebase.storage();
 
 // DOM Elements
 const loginPage = document.getElementById('loginPage');
-const adminPage = document.getElementById('adminPage');
+const dashboardPage = document.getElementById('dashboardPage');
 const googleLoginBtn = document.getElementById('googleLoginBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const userEmail = document.getElementById('userEmail');
@@ -25,52 +25,52 @@ const userName = document.getElementById('userName');
 const userAvatar = document.getElementById('userAvatar');
 const userRole = document.getElementById('userRole');
 const sidebarMenu = document.getElementById('sidebarMenu');
-const breadcrumb = document.getElementById('breadcrumb');
+const pageTitle = document.getElementById('pageTitle');
 
-// Loading State
+// Current user data
+let currentUserData = null;
+
+// Show/Hide loading
 function showLoading() {
-    document.getElementById('loadingSpinner').style.display = 'flex';
+    // You can add a loading spinner here
+    console.log('Loading...');
 }
 
 function hideLoading() {
-    document.getElementById('loadingSpinner').style.display = 'none';
+    console.log('Loading complete');
 }
 
-// Show Toast Message
-function showToast(message, type = 'info') {
-    const toast = document.getElementById('toast');
-    toast.textContent = message;
-    toast.style.display = 'block';
+// Show message
+function showMessage(elementId, message, type = 'info') {
+    const element = document.getElementById(elementId);
+    if (!element) return;
     
-    // Set color based on type
-    const colors = {
-        success: '#4cc9f0',
-        error: '#f72585',
-        warning: '#f8961e',
-        info: '#4895ef'
-    };
+    element.textContent = message;
+    element.className = `message ${type}`;
+    element.style.display = 'block';
     
-    toast.style.background = colors[type] || colors.info;
-    
-    // Auto hide after 5 seconds
-    setTimeout(() => {
-        toast.style.display = 'none';
-    }, 5000);
+    // Auto hide after 5 seconds for success/info messages
+    if (type !== 'error') {
+        setTimeout(() => {
+            element.style.display = 'none';
+        }, 5000);
+    }
 }
 
 // Initialize Master Admin
-async function initializeMasterAdmin(masterEmail) {
+async function initializeMasterAdmin(email) {
     try {
-        const userRef = db.collection('users').doc(masterEmail);
+        const userRef = db.collection('users').doc(email);
         const userDoc = await userRef.get();
         
         if (!userDoc.exists) {
             await userRef.set({
-                email: masterEmail,
+                email: email,
                 name: 'Master Admin',
                 role: 'master-admin',
                 isActive: true,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                hubName: 'Head Office'
             });
             console.log('Master admin initialized');
         }
@@ -79,87 +79,195 @@ async function initializeMasterAdmin(masterEmail) {
     }
 }
 
-// Setup Sidebar Menu based on user role
+// Setup Sidebar Menu
 function setupSidebarMenu(role) {
     sidebarMenu.innerHTML = '';
     
     if (role === 'master-admin') {
         sidebarMenu.innerHTML = `
-            <a href="#" class="menu-item active" onclick="switchTab('addAdminTab', 'Add Admin')">
+            <a href="#" class="menu-item active" onclick="showSection('addAdminSection', 'Add Admin')">
                 <i class="fas fa-user-plus"></i>
                 <span>Add Admin</span>
             </a>
-            <a href="#" class="menu-item" onclick="switchTab('adminListTab', 'Admin List')">
+            <a href="#" class="menu-item" onclick="showSection('adminListSection', 'Admin List')">
                 <i class="fas fa-users-cog"></i>
                 <span>Admin List</span>
             </a>
-            <a href="#" class="menu-item" onclick="switchTab('zoneManagementTab', 'Zone Management')">
+            <a href="#" class="menu-item" onclick="showSection('zoneManagementSection', 'Zone Management')">
                 <i class="fas fa-map-marker-alt"></i>
                 <span>Zone Management</span>
             </a>
-            <a href="#" class="menu-item" onclick="switchTab('fileUploadTab', 'File Upload')">
+            <a href="#" class="menu-item" onclick="showSection('fileUploadSection', 'File Upload')">
                 <i class="fas fa-cloud-upload-alt"></i>
                 <span>File Upload</span>
             </a>
-            <a href="#" class="menu-item" onclick="switchTab('visitorRequestsTab', 'Visitor Requests')">
+            <a href="#" class="menu-item" onclick="showSection('visitorRequestsSection', 'Visitor Requests')">
                 <i class="fas fa-user-clock"></i>
                 <span>Visitor Requests</span>
             </a>
         `;
-        switchTab('addAdminTab', 'Add Admin');
+        showSection('addAdminSection', 'Add Admin');
     } else if (role === 'admin') {
         sidebarMenu.innerHTML = `
-            <a href="#" class="menu-item active" onclick="switchTab('fileUploadTab', 'File Upload')">
+            <a href="#" class="menu-item active" onclick="showSection('fileUploadSection', 'File Upload')">
                 <i class="fas fa-cloud-upload-alt"></i>
                 <span>File Upload</span>
             </a>
         `;
-        switchTab('fileUploadTab', 'File Upload');
+        showSection('fileUploadSection', 'File Upload');
     } else if (role === 'visitor') {
-        sidebarMenu.innerHTML = `
-            <a href="#" class="menu-item active" onclick="switchTab('visitorPage', 'Dashboard')">
-                <i class="fas fa-tachometer-alt"></i>
-                <span>Dashboard</span>
-            </a>
-        `;
-        switchTab('visitorPage', 'Dashboard');
+        if (currentUserData && currentUserData.isActive === null) {
+            // Pending approval
+            sidebarMenu.innerHTML = `
+                <a href="#" class="menu-item active" onclick="showSection('visitorDashboardSection', 'Dashboard')">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Dashboard</span>
+                </a>
+            `;
+            showSection('visitorDashboardSection', 'Dashboard');
+        } else if (currentUserData && currentUserData.isActive === true) {
+            // Approved visitor
+            sidebarMenu.innerHTML = `
+                <a href="#" class="menu-item active" onclick="showSection('visitorDashboardSection', 'Dashboard')">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Dashboard</span>
+                </a>
+            `;
+            showSection('visitorDashboardSection', 'Dashboard');
+        }
     }
 }
 
-// Switch between tabs
-function switchTab(tabId, tabName) {
-    // Update breadcrumb
-    breadcrumb.innerHTML = `<span>${tabName}</span>`;
+// Show/Hide sections
+function showSection(sectionId, title) {
+    // Hide all sections
+    const sections = document.querySelectorAll('.content-section');
+    sections.forEach(section => {
+        section.style.display = 'none';
+        section.classList.remove('active');
+    });
     
     // Remove active class from all menu items
-    document.querySelectorAll('.menu-item').forEach(item => {
-        item.classList.remove('active');
-    });
+    const menuItems = document.querySelectorAll('.menu-item');
+    menuItems.forEach(item => item.classList.remove('active'));
     
     // Add active class to clicked menu item
     event.target.closest('.menu-item').classList.add('active');
     
-    // Hide all tabs
-    document.querySelectorAll('.tab-content').forEach(tab => {
-        tab.style.display = 'none';
-        tab.classList.remove('active');
-    });
-    
-    // Show selected tab
-    const tab = document.getElementById(tabId);
-    if (tab) {
-        tab.style.display = 'block';
-        tab.classList.add('active');
+    // Show selected section
+    const section = document.getElementById(sectionId);
+    if (section) {
+        section.style.display = 'block';
+        section.classList.add('active');
+        pageTitle.textContent = title;
+        
+        // Load data for specific sections
+        switch(sectionId) {
+            case 'adminListSection':
+                loadAdmins();
+                break;
+            case 'zoneManagementSection':
+                loadZones();
+                break;
+            case 'fileUploadSection':
+                loadZonesForUpload();
+                loadRecentUploads();
+                break;
+            case 'visitorRequestsSection':
+                loadVisitorRequests();
+                break;
+            case 'visitorDashboardSection':
+                updateVisitorDashboard();
+                break;
+        }
     }
+}
+
+// Update visitor dashboard
+function updateVisitorDashboard() {
+    if (!currentUserData) return;
     
-    // Load data if needed
-    if (tabId === 'adminListTab') loadAdmins();
-    if (tabId === 'visitorRequestsTab') loadVisitorRequests();
-    if (tabId === 'fileUploadTab') {
-        loadZonesForUpload();
-        loadRecentUploads();
+    const visitorName = document.getElementById('visitorName');
+    const visitorStatus = document.getElementById('visitorStatus');
+    const visitorContent = document.getElementById('visitorContent');
+    
+    if (visitorName) visitorName.textContent = currentUserData.name || 'Visitor';
+    
+    if (currentUserData.isActive === null) {
+        if (visitorStatus) visitorStatus.textContent = '⏳ Waiting for Admin Approval';
+        if (visitorContent) {
+            visitorContent.innerHTML = `
+                <div class="section-card">
+                    <div class="section-body">
+                        <div style="text-align: center; padding: 40px;">
+                            <div style="font-size: 60px; color: #f6ad55; margin-bottom: 20px;">
+                                <i class="fas fa-clock"></i>
+                            </div>
+                            <h3 style="margin-bottom: 15px; color: #2d3748;">Registration Under Review</h3>
+                            <p style="color: #718096; max-width: 400px; margin: 0 auto;">
+                                Your registration request has been submitted and is currently under review by the administrator.
+                                You will be able to access all features once your account is approved.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    } else if (currentUserData.isActive === true) {
+        if (visitorStatus) visitorStatus.textContent = '✅ Account Approved';
+        if (visitorContent) {
+            visitorContent.innerHTML = `
+                <div class="section-card">
+                    <div class="section-header">
+                        <h2><i class="fas fa-user-circle"></i> Profile Information</h2>
+                    </div>
+                    <div class="section-body">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                            <div style="background: #f7fafc; padding: 20px; border-radius: 8px;">
+                                <h4 style="color: #718096; margin-bottom: 10px;">Full Name</h4>
+                                <p style="font-size: 18px; font-weight: 600; color: #2d3748;">${currentUserData.name || 'N/A'}</p>
+                            </div>
+                            <div style="background: #f7fafc; padding: 20px; border-radius: 8px;">
+                                <h4 style="color: #718096; margin-bottom: 10px;">Email Address</h4>
+                                <p style="font-size: 18px; font-weight: 600; color: #2d3748;">${currentUserData.email}</p>
+                            </div>
+                            <div style="background: #f7fafc; padding: 20px; border-radius: 8px;">
+                                <h4 style="color: #718096; margin-bottom: 10px;">Hub Name</h4>
+                                <p style="font-size: 18px; font-weight: 600; color: #2d3748;">${currentUserData.hubName || 'N/A'}</p>
+                            </div>
+                            <div style="background: #f7fafc; padding: 20px; border-radius: 8px;">
+                                <h4 style="color: #718096; margin-bottom: 10px;">Account Status</h4>
+                                <p style="font-size: 18px; font-weight: 600; color: #48bb78;">Active ✓</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section-card">
+                    <div class="section-header">
+                        <h2><i class="fas fa-chart-line"></i> Reports Dashboard</h2>
+                    </div>
+                    <div class="section-body">
+                        <p style="color: #718096;">Your reports and analytics will appear here once available.</p>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-top: 20px;">
+                            <div style="text-align: center; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px;">
+                                <div style="font-size: 24px; font-weight: 600;">0</div>
+                                <div>Today's Reports</div>
+                            </div>
+                            <div style="text-align: center; padding: 20px; background: linear-gradient(135deg, #48bb78 0%, #38a169 100%); color: white; border-radius: 8px;">
+                                <div style="font-size: 24px; font-weight: 600;">0</div>
+                                <div>Pending Tasks</div>
+                            </div>
+                            <div style="text-align: center; padding: 20px; background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%); color: white; border-radius: 8px;">
+                                <div style="font-size: 24px; font-weight: 600;">0</div>
+                                <div>Completed</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
     }
-    if (tabId === 'zoneManagementTab') loadZones();
 }
 
 // Load zones for upload dropdowns
@@ -174,12 +282,8 @@ async function loadZonesForUpload() {
         const finalZoneSelect = document.getElementById('finalZone');
         
         // Clear existing options except first one
-        while (morningZoneSelect.options.length > 1) {
-            morningZoneSelect.remove(1);
-        }
-        while (finalZoneSelect.options.length > 1) {
-            finalZoneSelect.remove(1);
-        }
+        morningZoneSelect.innerHTML = '<option value="">Select a zone</option>';
+        finalZoneSelect.innerHTML = '<option value="">Select a zone</option>';
         
         snapshot.forEach(doc => {
             const zone = doc.data();
@@ -202,28 +306,27 @@ async function loadZonesForUpload() {
 // Add new admin
 document.getElementById('addAdminBtn').addEventListener('click', async () => {
     const email = document.getElementById('adminEmail').value.trim();
-    const messageDiv = document.getElementById('addAdminMessage');
     
     if (!email || !email.includes('@')) {
-        showMessage(messageDiv, 'Please enter a valid email address', 'error');
+        showMessage('addAdminMessage', 'Please enter a valid email address', 'error');
         return;
     }
     
     try {
-        const currentUser = auth.currentUser;
-        if (!currentUser) return;
+        const user = auth.currentUser;
+        if (!user) return;
         
-        const currentUserDoc = await db.collection('users').doc(currentUser.email).get();
-        if (!currentUserDoc.exists || currentUserDoc.data().role !== 'master-admin') {
-            showMessage(messageDiv, 'Only master admin can add admins', 'error');
+        const userDoc = await db.collection('users').doc(user.email).get();
+        if (!userDoc.exists || userDoc.data().role !== 'master-admin') {
+            showMessage('addAdminMessage', 'Only master admin can add admins', 'error');
             return;
         }
         
         const userRef = db.collection('users').doc(email);
-        const userDoc = await userRef.get();
+        const existingUser = await userRef.get();
         
-        if (userDoc.exists) {
-            showMessage(messageDiv, 'This email is already registered', 'error');
+        if (existingUser.exists) {
+            showMessage('addAdminMessage', 'This email is already registered', 'error');
             return;
         }
         
@@ -232,15 +335,19 @@ document.getElementById('addAdminBtn').addEventListener('click', async () => {
             role: 'admin',
             isActive: true,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            addedBy: currentUser.email
+            addedBy: user.email,
+            name: email.split('@')[0]
         });
         
-        showMessage(messageDiv, 'Admin added successfully!', 'success');
+        showMessage('addAdminMessage', 'Admin added successfully!', 'success');
         document.getElementById('adminEmail').value = '';
-        showToast('Admin added successfully!', 'success');
+        
+        // Show success toast
+        showMessage('addAdminMessage', '✅ Admin added successfully!', 'success');
+        
     } catch (error) {
         console.error('Error adding admin:', error);
-        showMessage(messageDiv, 'Error adding admin: ' + error.message, 'error');
+        showMessage('addAdminMessage', 'Error: ' + error.message, 'error');
     }
 });
 
@@ -260,12 +367,7 @@ async function loadAdmins() {
             const row = document.createElement('tr');
             
             row.innerHTML = `
-                <td>
-                    <div class="d-flex align-items-center">
-                        <i class="fas fa-envelope me-2"></i>
-                        ${user.email}
-                    </div>
-                </td>
+                <td>${user.email}</td>
                 <td>
                     <span class="status-badge ${user.role === 'master-admin' ? 'status-active' : 'status-pending'}">
                         ${user.role}
@@ -279,12 +381,12 @@ async function loadAdmins() {
                 <td>
                     <div class="action-buttons">
                         ${user.role !== 'master-admin' ? 
-                            `<button class="btn-action ${user.isActive ? 'btn-block' : 'btn-unblock'}" 
+                            `<button class="action-btn ${user.isActive ? 'btn-block' : 'btn-unblock'}" 
                                     onclick="toggleAdminStatus('${user.email}', ${!user.isActive})">
                                 <i class="fas ${user.isActive ? 'fa-ban' : 'fa-check'}"></i>
                                 ${user.isActive ? 'Block' : 'Unblock'}
                             </button>` 
-                            : ''
+                            : 'Master Admin'
                         }
                     </div>
                 </td>
@@ -306,43 +408,40 @@ async function toggleAdminStatus(email, newStatus) {
         });
         
         loadAdmins();
-        showToast(`Admin ${newStatus ? 'activated' : 'blocked'} successfully`, 'success');
+        showMessage('addAdminMessage', `Admin ${newStatus ? 'activated' : 'blocked'} successfully`, 'success');
     } catch (error) {
         console.error('Error updating admin status:', error);
-        showToast('Error updating admin status', 'error');
+        showMessage('addAdminMessage', 'Error updating admin status', 'error');
     }
 }
 
 // Zone Management Functions
-
-// Add new zone
 document.getElementById('addZoneBtn').addEventListener('click', async () => {
     const name = document.getElementById('zoneName').value.trim();
     const code = document.getElementById('zoneCode').value.trim().toUpperCase();
-    const messageDiv = document.getElementById('zoneMessage');
     
     if (!name || !code) {
-        showMessage(messageDiv, 'Please enter both zone name and code', 'error');
+        showMessage('zoneMessage', 'Please enter both zone name and code', 'error');
         return;
     }
     
     try {
-        const currentUser = auth.currentUser;
-        if (!currentUser) return;
+        const user = auth.currentUser;
+        if (!user) return;
         
-        const currentUserDoc = await db.collection('users').doc(currentUser.email).get();
-        if (!currentUserDoc.exists || currentUserDoc.data().role !== 'master-admin') {
-            showMessage(messageDiv, 'Only master admin can add zones', 'error');
+        const userDoc = await db.collection('users').doc(user.email).get();
+        if (!userDoc.exists || userDoc.data().role !== 'master-admin') {
+            showMessage('zoneMessage', 'Only master admin can add zones', 'error');
             return;
         }
         
         // Check if zone code already exists
-        const zonesSnapshot = await db.collection('zones')
+        const existingZones = await db.collection('zones')
             .where('code', '==', code)
             .get();
         
-        if (!zonesSnapshot.empty) {
-            showMessage(messageDiv, 'Zone code already exists', 'error');
+        if (!existingZones.empty) {
+            showMessage('zoneMessage', 'Zone code already exists', 'error');
             return;
         }
         
@@ -351,18 +450,19 @@ document.getElementById('addZoneBtn').addEventListener('click', async () => {
             code: code,
             isActive: true,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            createdBy: currentUser.email
+            createdBy: user.email
         });
         
-        showMessage(messageDiv, 'Zone added successfully!', 'success');
+        showMessage('zoneMessage', 'Zone added successfully!', 'success');
         document.getElementById('zoneName').value = '';
         document.getElementById('zoneCode').value = '';
-        showToast('Zone added successfully!', 'success');
+        
         loadZones();
         loadZonesForUpload();
+        
     } catch (error) {
         console.error('Error adding zone:', error);
-        showMessage(messageDiv, 'Error adding zone: ' + error.message, 'error');
+        showMessage('zoneMessage', 'Error: ' + error.message, 'error');
     }
 });
 
@@ -378,10 +478,10 @@ async function loadZones() {
         
         if (snapshot.empty) {
             zonesGrid.innerHTML = `
-                <div class="col-12">
-                    <div class="alert info">
-                        No zones found. Add your first zone above.
-                    </div>
+                <div style="grid-column: 1 / -1; text-align: center; padding: 40px; background: #f7fafc; border-radius: 8px;">
+                    <i class="fas fa-map-marker-alt" style="font-size: 48px; color: #a0aec0; margin-bottom: 20px;"></i>
+                    <h3 style="color: #718096; margin-bottom: 10px;">No Zones Found</h3>
+                    <p style="color: #a0aec0;">Add your first zone using the form above.</p>
                 </div>
             `;
             return;
@@ -398,7 +498,7 @@ async function loadZones() {
                 </div>
                 <div class="zone-name">${zone.name}</div>
                 <div class="zone-code">Code: ${zone.code}</div>
-                <div class="zone-status">
+                <div style="margin: 15px 0;">
                     <span class="status-badge ${zone.isActive ? 'status-active' : 'status-blocked'}">
                         ${zone.isActive ? 'Active' : 'Inactive'}
                     </span>
@@ -428,16 +528,14 @@ async function toggleZoneStatus(zoneId, newStatus) {
         
         loadZones();
         loadZonesForUpload();
-        showToast(`Zone ${newStatus ? 'activated' : 'deactivated'} successfully`, 'success');
+        showMessage('zoneMessage', `Zone ${newStatus ? 'activated' : 'deactivated'} successfully`, 'success');
     } catch (error) {
         console.error('Error updating zone status:', error);
-        showToast('Error updating zone status', 'error');
+        showMessage('zoneMessage', 'Error updating zone status', 'error');
     }
 }
 
 // File Upload Functions
-
-// File selection handlers
 document.getElementById('morningFile').addEventListener('change', function(e) {
     handleFileSelection(e, 'morningFileInfo');
 });
@@ -464,7 +562,6 @@ function handleFileSelection(event, infoElementId) {
     }
 }
 
-// Validate file type
 function validateFile(file) {
     const validTypes = [
         'text/csv',
@@ -481,7 +578,6 @@ function validateFile(file) {
     return validExtensions.some(ext => fileName.endsWith(ext));
 }
 
-// Format file size
 function formatFileSize(bytes) {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -508,12 +604,12 @@ async function uploadFile(type) {
     const zoneId = zoneSelect.value;
     
     if (!zoneId) {
-        showToast('Please select a zone first', 'error');
+        showMessage(`${type}FileInfo`, 'Please select a zone first', 'error');
         return;
     }
     
     if (!file) {
-        showToast(`Please select a ${type} file first`, 'error');
+        showMessage(`${type}FileInfo`, `Please select a ${type} file first`, 'error');
         return;
     }
     
@@ -523,14 +619,14 @@ async function uploadFile(type) {
         
         const userDoc = await db.collection('users').doc(user.email).get();
         if (!userDoc.exists || !['master-admin', 'admin'].includes(userDoc.data().role)) {
-            showToast('Only admins can upload files', 'error');
+            showMessage(`${type}FileInfo`, 'Only admins can upload files', 'error');
             return;
         }
         
         // Get zone data
         const zoneDoc = await db.collection('zones').doc(zoneId).get();
         if (!zoneDoc.exists) {
-            showToast('Selected zone not found', 'error');
+            showMessage(`${type}FileInfo`, 'Selected zone not found', 'error');
             return;
         }
         
@@ -566,19 +662,17 @@ async function uploadFile(type) {
         });
         
         // Success
-        fileInfo.textContent = `${type} file uploaded successfully for ${zone.name} zone!`;
+        fileInfo.textContent = `✅ ${type} file uploaded successfully for ${zone.name} zone!`;
         fileInfo.className = 'file-info success';
         fileInput.value = '';
         zoneSelect.value = '';
         
-        showToast(`${type} file uploaded successfully!`, 'success');
         loadRecentUploads();
         
     } catch (error) {
         console.error('Error uploading file:', error);
-        fileInfo.textContent = `Upload failed: ${error.message}`;
+        fileInfo.textContent = `❌ Upload failed: ${error.message}`;
         fileInfo.className = 'file-info error';
-        showToast('Upload failed: ' + error.message, 'error');
     }
 }
 
@@ -595,8 +689,9 @@ async function loadRecentUploads() {
         
         if (snapshot.empty) {
             recentUploads.innerHTML = `
-                <div class="alert info">
-                    No recent uploads found.
+                <div style="text-align: center; padding: 40px; color: #718096;">
+                    <i class="fas fa-cloud-upload-alt" style="font-size: 48px; margin-bottom: 20px;"></i>
+                    <p>No recent uploads found.</p>
                 </div>
             `;
             return;
@@ -608,7 +703,7 @@ async function loadRecentUploads() {
             uploadItem.className = 'upload-item';
             
             const fileTypeIcon = upload.type === 'morning' ? 'fa-sun' : 'fa-flag-checkered';
-            const fileTypeColor = upload.type === 'morning' ? '#f8961e' : '#4895ef';
+            const fileTypeColor = upload.type === 'morning' ? '#ed8936' : '#4299e1';
             
             uploadItem.innerHTML = `
                 <div class="upload-item-icon" style="background: ${fileTypeColor}20; color: ${fileTypeColor}">
@@ -666,11 +761,11 @@ async function loadVisitorRequests() {
                 <td>
                     <div class="action-buttons">
                         ${user.isActive === undefined ? 
-                            `<button class="btn-action btn-approve" onclick="approveVisitor('${user.email}')">
+                            `<button class="action-btn btn-approve" onclick="approveVisitor('${user.email}')">
                                 <i class="fas fa-check"></i> Approve
                             </button>` : ''
                         }
-                        <button class="btn-action ${user.isActive ? 'btn-block' : 'btn-unblock'}" 
+                        <button class="action-btn ${user.isActive ? 'btn-block' : 'btn-unblock'}" 
                                 onclick="toggleVisitorStatus('${user.email}', ${!user.isActive})">
                             <i class="fas ${user.isActive ? 'fa-ban' : 'fa-check'}"></i>
                             ${user.isActive ? 'Block' : 'Unblock'}
@@ -696,10 +791,10 @@ async function approveVisitor(email) {
         });
         
         loadVisitorRequests();
-        showToast('Visitor approved successfully!', 'success');
+        showMessage('addAdminMessage', 'Visitor approved successfully!', 'success');
     } catch (error) {
         console.error('Error approving visitor:', error);
-        showToast('Error approving visitor', 'error');
+        showMessage('addAdminMessage', 'Error approving visitor', 'error');
     }
 }
 
@@ -712,10 +807,10 @@ async function toggleVisitorStatus(email, newStatus) {
         });
         
         loadVisitorRequests();
-        showToast(`Visitor ${newStatus ? 'activated' : 'blocked'} successfully`, 'success');
+        showMessage('addAdminMessage', `Visitor ${newStatus ? 'activated' : 'blocked'} successfully`, 'success');
     } catch (error) {
         console.error('Error updating visitor status:', error);
-        showToast('Error updating visitor status', 'error');
+        showMessage('addAdminMessage', 'Error updating visitor status', 'error');
     }
 }
 
@@ -724,17 +819,16 @@ document.getElementById('submitRegistrationBtn').addEventListener('click', async
     const email = document.getElementById('regEmail').value;
     const name = document.getElementById('regName').value.trim();
     const hubName = document.getElementById('regHub').value.trim();
-    const messageDiv = document.getElementById('registrationMessage');
     
     if (!name || !hubName) {
-        showMessage(messageDiv, 'Please fill all fields', 'error');
+        showMessage('registrationMessage', 'Please fill all fields', 'error');
         return;
     }
     
     try {
         const user = auth.currentUser;
         if (!user || user.email !== email) {
-            showMessage(messageDiv, 'Authentication error', 'error');
+            showMessage('registrationMessage', 'Authentication error', 'error');
             return;
         }
         
@@ -747,8 +841,7 @@ document.getElementById('submitRegistrationBtn').addEventListener('click', async
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
         
-        showMessage(messageDiv, 'Registration submitted! Waiting for admin approval.', 'success');
-        showToast('Registration submitted successfully!', 'success');
+        showMessage('registrationMessage', '✅ Registration submitted! Waiting for admin approval.', 'success');
         
         setTimeout(() => {
             window.location.reload();
@@ -756,32 +849,24 @@ document.getElementById('submitRegistrationBtn').addEventListener('click', async
         
     } catch (error) {
         console.error('Error submitting registration:', error);
-        showMessage(messageDiv, 'Error: ' + error.message, 'error');
+        showMessage('registrationMessage', 'Error: ' + error.message, 'error');
     }
 });
-
-// Show message
-function showMessage(element, text, type) {
-    element.textContent = text;
-    element.className = `alert ${type}`;
-}
 
 // Google Login
 googleLoginBtn.addEventListener('click', async () => {
     try {
-        showLoading();
         const provider = new firebase.auth.GoogleAuthProvider();
         const result = await auth.signInWithPopup(provider);
         
+        // Initialize master admin if it's the master email
         if (result.user.email === 'ebadot.hossen@carrybee.com') {
             await initializeMasterAdmin(result.user.email);
         }
         
-        hideLoading();
     } catch (error) {
         console.error('Login error:', error);
-        showToast('Login failed: ' + error.message, 'error');
-        hideLoading();
+        showMessage('errorMessage', 'Login failed: ' + error.message, 'error');
     }
 });
 
@@ -796,18 +881,18 @@ auth.onAuthStateChanged(async (user) => {
             if (!userDoc.exists) {
                 // First time visitor - show registration
                 loginPage.style.display = 'none';
-                adminPage.style.display = 'block';
-                document.getElementById('registrationTab').style.display = 'block';
+                dashboardPage.style.display = 'block';
+                document.getElementById('registrationSection').style.display = 'block';
                 document.getElementById('regEmail').value = user.email;
-                setupSidebarMenu('visitor');
                 return;
             }
             
             const userData = userDoc.data();
+            currentUserData = userData;
             
             // Check if user is active
             if (userData.isActive === false) {
-                showToast('Your account is blocked. Contact administrator.', 'error');
+                showMessage('errorMessage', 'Your account is blocked. Contact administrator.', 'error');
                 await auth.signOut();
                 return;
             }
@@ -817,91 +902,34 @@ auth.onAuthStateChanged(async (user) => {
             userName.textContent = userData.name || user.email.split('@')[0];
             userRole.textContent = userData.role === 'master-admin' ? 'Master Admin' : 
                                  userData.role === 'admin' ? 'Admin' : 'Visitor';
-            userAvatar.src = user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.name || user.email)}&background=4361ee&color=fff`;
+            userAvatar.src = user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.name || user.email)}&background=667eea&color=fff`;
             
-            // Show appropriate page
+            // Show dashboard
             loginPage.style.display = 'none';
-            adminPage.style.display = 'block';
+            dashboardPage.style.display = 'block';
             
             // Setup sidebar menu
             setupSidebarMenu(userData.role);
             
-            // Setup visitor page
-            if (userData.role === 'visitor') {
-                const visitorName = document.getElementById('visitorName');
-                const visitorStatus = document.getElementById('visitorStatus');
-                const visitorContent = document.getElementById('visitorContent');
-                
-                visitorName.textContent = userData.name;
-                
-                if (userData.isActive === null) {
-                    visitorStatus.textContent = 'Waiting for admin approval';
-                    visitorContent.innerHTML = `
-                        <div class="card">
-                            <div class="card-body text-center">
-                                <div class="mb-3">
-                                    <i class="fas fa-clock fa-3x text-warning"></i>
-                                </div>
-                                <h3>Registration Pending</h3>
-                                <p class="text-muted">Your registration is under review by the administrator.</p>
-                                <p>You will be notified once approved.</p>
-                            </div>
-                        </div>
-                    `;
-                } else if (userData.isActive === true) {
-                    visitorStatus.textContent = 'Account Approved';
-                    visitorContent.innerHTML = `
-                        <div class="row">
-                            <div class="col-md-4">
-                                <div class="card">
-                                    <div class="card-body">
-                                        <h5><i class="fas fa-user text-primary"></i> Your Profile</h5>
-                                        <p><strong>Name:</strong> ${userData.name}</p>
-                                        <p><strong>Email:</strong> ${userData.email}</p>
-                                        <p><strong>Hub:</strong> ${userData.hubName}</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-8">
-                                <div class="card">
-                                    <div class="card-body">
-                                        <h5><i class="fas fa-chart-line text-success"></i> Reports</h5>
-                                        <p>Your reports dashboard will be available here.</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                }
-            }
-            
         } catch (error) {
             console.error('Error checking user data:', error);
-            showToast('Error loading user data', 'error');
+            showMessage('errorMessage', 'Error loading user data', 'error');
         }
         
     } else {
         // User is signed out
         loginPage.style.display = 'block';
-        adminPage.style.display = 'none';
+        dashboardPage.style.display = 'none';
     }
 });
 
 // Logout
 logoutBtn.addEventListener('click', () => {
     auth.signOut().then(() => {
-        showToast('Logged out successfully', 'success');
+        loginPage.style.display = 'block';
+        dashboardPage.style.display = 'none';
+        showMessage('errorMessage', 'Logged out successfully', 'success');
     }).catch(error => {
         console.error('Logout error:', error);
-        showToast('Logout failed', 'error');
     });
 });
-
-// Sidebar toggle for mobile
-document.getElementById('sidebarToggle').addEventListener('click', () => {
-    document.getElementById('sidebar').classList.toggle('active');
-});
-
-// Initialize
-showLoading();
-setTimeout(hideLoading, 1000);
