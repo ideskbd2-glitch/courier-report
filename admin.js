@@ -1,1380 +1,841 @@
-// Firebase Configuration
+// admin.js (ES Module)
+// Firebase v9 modular via CDN
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  collection,
+  query,
+  where,
+  orderBy,
+  limit,
+  getDocs,
+  onSnapshot,
+  serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+import {
+  getStorage,
+  ref,
+  uploadBytesResumable,
+  getDownloadURL
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
+
+/* =========================
+   YOUR CONFIG + MASTER EMAIL
+========================= */
 const firebaseConfig = {
-    apiKey: "AIzaSyBoInYELD9MbXamDyQPN_OSyVBaFMouSLA",
-    authDomain: "courier-report-199b7.firebaseapp.com",
-    projectId: "courier-report-199b7",
-    storageBucket: "courier-report-199b7.firebasestorage.app",
-    messagingSenderId: "985913257751",
-    appId: "1:985913257751:web:1e4164beca2a945da11152",
-    measurementId: "G-RZPRWQP9G2"
+  apiKey: "AIzaSyBoInYELD9MbXamDyQPN_OSyVBaFMouSLA",
+  authDomain: "courier-report-199b7.firebaseapp.com",
+  projectId: "courier-report-199b7",
+  storageBucket: "courier-report-199b7.firebasestorage.app",
+  messagingSenderId: "985913257751",
+  appId: "1:985913257751:web:1e4164beca2a945da11152",
+  measurementId: "G-RZPRWQP9G2"
 };
 
-// Initialize Firebase
-try {
-    if (!firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
-    }
-} catch (error) {
-    console.error("Firebase initialization error:", error);
+const MASTER_EMAIL = "ebadot.hossen@carrybee.com";
+
+/* =========================
+   INIT
+========================= */
+const app = initializeApp(firebaseConfig);
+try { getAnalytics(app); } catch (e) { /* analytics may fail on non-https */ }
+
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = getStorage(app);
+const provider = new GoogleAuthProvider();
+provider.setCustomParameters({ prompt: "select_account" });
+
+/* =========================
+   UI HELPERS
+========================= */
+const $ = (id) => document.getElementById(id);
+
+const ui = {
+  alert: $("alert"),
+  btnLogin: $("btnLogin"),
+  btnLogout: $("btnLogout"),
+  userChip: $("userChip"),
+  userName: $("userName"),
+  userEmail: $("userEmail"),
+  avatar: $("avatar"),
+
+  app: $("app"),
+  envPill: $("envPill"),
+  rolePill: $("rolePill"),
+  statusPill: $("statusPill"),
+  todayLabel: $("todayLabel"),
+
+  // tabs
+  tabs: document.querySelectorAll(".tab"),
+  panels: {
+    upload: $("panel-upload"),
+    visitors: $("panel-visitors"),
+    zones: $("panel-zones"),
+    admins: $("panel-admins"),
+  },
+  tabZones: $("tabZones"),
+  tabAdmins: $("tabAdmins"),
+
+  // upload
+  reportDate: $("reportDate"),
+  zoneSelect: $("zoneSelect"),
+  fileMorning: $("fileMorning"),
+  fileFinal: $("fileFinal"),
+  btnUploadMorning: $("btnUploadMorning"),
+  btnUploadFinal: $("btnUploadFinal"),
+  progressWrap: $("progressWrap"),
+  progressBar: $("progressBar"),
+  progressText: $("progressText"),
+  recentTbody: $("recentTbody"),
+  recentCount: $("recentCount"),
+
+  // zones
+  newZoneName: $("newZoneName"),
+  btnAddZone: $("btnAddZone"),
+  zoneTbody: $("zoneTbody"),
+
+  // admins
+  newAdminEmail: $("newAdminEmail"),
+  btnAddAdmin: $("btnAddAdmin"),
+  adminTbody: $("adminTbody"),
+
+  // visitors
+  btnRefreshVisitors: $("btnRefreshVisitors"),
+  visitorTbody: $("visitorTbody"),
+  visitorCount: $("visitorCount"),
+  visitorChips: document.querySelectorAll(".chip"),
+};
+
+function showAlert(type, msg) {
+  ui.alert.className = `alert ${type}`;
+  ui.alert.textContent = msg;
+  ui.alert.classList.remove("hidden");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+function hideAlert(){ ui.alert.classList.add("hidden"); }
+
+function setLoading(btn, isLoading, text = "Loading...") {
+  if (!btn) return;
+  btn.disabled = isLoading;
+  btn.dataset._oldText ??= btn.textContent;
+  btn.textContent = isLoading ? text : btn.dataset._oldText;
 }
 
-const auth = firebase.auth();
-const db = firebase.firestore();
-const storage = firebase.storage();
-
-// Global Variables
-let currentUser = null;
-let userRole = null;
-let userData = null;
-const MASTER_ADMIN_EMAIL = "ebadot.hossen@carrybee.com";
-
-// DOM Elements
-const loginPage = document.getElementById('loginPage');
-const dashboardPage = document.getElementById('dashboardPage');
-const googleLoginBtn = document.getElementById('googleLoginBtn');
-const logoutBtn = document.getElementById('logoutBtn');
-const adminEmailSpan = document.getElementById('adminEmail');
-const adminRoleSpan = document.getElementById('adminRole');
-const menuToggle = document.getElementById('menuToggle');
-const sidebar = document.getElementById('sidebar');
-const currentDateSpan = document.getElementById('currentDate');
-const loginError = document.getElementById('loginError');
-const loadingOverlay = document.getElementById('loadingOverlay');
-const messageToast = document.getElementById('messageToast');
-const toastMessage = document.getElementById('toastMessage');
-
-// Menu Items
-const menuItems = document.querySelectorAll('.menu-item');
-const adminMenu = document.getElementById('adminMenu');
-const zoneMenu = document.getElementById('zoneMenu');
-
-// Section Elements
-const sections = document.querySelectorAll('.section');
-
-// Stats Elements
-const totalZonesSpan = document.getElementById('totalZones');
-const totalAdminsSpan = document.getElementById('totalAdmins');
-const pendingRequestsSpan = document.getElementById('pendingRequests');
-const todayUploadsSpan = document.getElementById('todayUploads');
-const activityList = document.getElementById('activityList');
-
-// Zone Management
-const addZoneBtn = document.getElementById('addZoneBtn');
-const zonesList = document.getElementById('zonesList');
-const zoneModal = document.getElementById('zoneModal');
-const closeZoneModal = document.getElementById('closeZoneModal');
-const zoneForm = document.getElementById('zoneForm');
-const zoneIdInput = document.getElementById('zoneId');
-const zoneNameInput = document.getElementById('zoneName');
-const zoneDescriptionInput = document.getElementById('zoneDescription');
-const saveZoneBtn = document.getElementById('saveZoneBtn');
-const cancelZoneBtn = document.getElementById('cancelZoneBtn');
-
-// File Upload
-const morningUploadForm = document.getElementById('morningUploadForm');
-const finalUploadForm = document.getElementById('finalUploadForm');
-const morningZoneSelect = document.getElementById('morningZoneSelect');
-const finalZoneSelect = document.getElementById('finalZoneSelect');
-const morningDateInput = document.getElementById('morningDate');
-const finalDateInput = document.getElementById('finalDate');
-const morningFileInput = document.getElementById('morningFile');
-const finalFileInput = document.getElementById('finalFile');
-const morningFileName = document.getElementById('morningFileName');
-const finalFileName = document.getElementById('finalFileName');
-const morningFileDrop = document.getElementById('morningFileDrop');
-const finalFileDrop = document.getElementById('finalFileDrop');
-const uploadsList = document.getElementById('uploadsList');
-
-// Admin Management
-const addAdminBtn = document.getElementById('addAdminBtn');
-const addAdminForm = document.getElementById('addAdminForm');
-const newAdminForm = document.getElementById('newAdminForm');
-const adminEmailInput = document.getElementById('adminEmailInput');
-const cancelAddAdmin = document.getElementById('cancelAddAdmin');
-const adminsList = document.getElementById('adminsList');
-
-// Visitor Requests
-const visitorFilter = document.getElementById('visitorFilter');
-const visitorsList = document.getElementById('visitorsList');
-
-// Initialize Date
-function initializeDate() {
-    const today = new Date();
-    const options = { 
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
-    };
-    const dateString = today.toLocaleDateString('bn-BD', options);
-    if (currentDateSpan) {
-        currentDateSpan.textContent = dateString;
-    }
-    
-    // Set date inputs to today (and disable past dates)
-    const todayString = today.toISOString().split('T')[0];
-    
-    if (morningDateInput) {
-        morningDateInput.value = todayString;
-        morningDateInput.min = todayString;
-        morningDateInput.max = todayString;
-    }
-    
-    if (finalDateInput) {
-        finalDateInput.value = todayString;
-        finalDateInput.min = todayString;
-        finalDateInput.max = todayString;
-    }
+function escapeHtml(s="") {
+  return String(s)
+    .replaceAll("&","&amp;").replaceAll("<","&lt;")
+    .replaceAll(">","&gt;").replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
 }
 
-// Show Loading
-function showLoading() {
-    if (loadingOverlay) {
-        loadingOverlay.classList.remove('hidden');
-    }
+/* =========================
+   DATE (Dhaka) — Today Only
+========================= */
+function getTodayDhakaISO() {
+  // YYYY-MM-DD in Asia/Dhaka
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Dhaka",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  });
+  return fmt.format(new Date()); // en-CA gives YYYY-MM-DD
 }
 
-// Hide Loading
-function hideLoading() {
-    if (loadingOverlay) {
-        loadingOverlay.classList.add('hidden');
-    }
+/* =========================
+   AUTH + ROLE
+========================= */
+let me = {
+  uid: null,
+  email: null,
+  name: null,
+  role: null,   // "master" | "admin"
+  active: false
+};
+
+async function resolveRole(user) {
+  const email = (user.email || "").toLowerCase();
+
+  if (email === MASTER_EMAIL.toLowerCase()) {
+    return { role: "master", active: true };
+  }
+
+  // admins collection: docs keyed by uid for convenience
+  // but we support lookup by email too
+  const adminsRef = collection(db, "admins");
+  const qy = query(adminsRef, where("email", "==", email), limit(1));
+  const snap = await getDocs(qy);
+  if (snap.empty) return { role: null, active: false };
+
+  const d = snap.docs[0].data();
+  if (d.active === false) return { role: d.role || "admin", active: false };
+  return { role: d.role || "admin", active: true };
 }
 
-// Show Toast Message
-function showToast(message, type = 'success') {
-    if (!messageToast || !toastMessage) return;
-    
-    const toastIcon = messageToast.querySelector('i');
-    if (toastIcon) {
-        toastIcon.className = type === 'success' ? 'fas fa-check-circle' : 'fas fa-exclamation-circle';
-        toastIcon.style.color = type === 'success' ? '#28a745' : '#dc3545';
-    }
-    
-    toastMessage.textContent = message;
-    messageToast.classList.remove('hidden');
-    messageToast.classList.add('show');
-    
-    setTimeout(() => {
-        messageToast.classList.remove('show');
-        setTimeout(() => {
-            messageToast.classList.add('hidden');
-        }, 300);
-    }, 3000);
+function applyRoleUI() {
+  ui.rolePill.textContent = me.role ? (me.role === "master" ? "Master Admin" : "Regular Admin") : "No Access";
+  ui.statusPill.textContent = me.active ? "Active" : "Blocked";
+  ui.statusPill.className = `pill ${me.active ? "ghost" : ""}`;
+
+  // Master-only tabs
+  const isMaster = me.role === "master" && me.active;
+  ui.tabZones.classList.toggle("hidden", !isMaster);
+  ui.tabAdmins.classList.toggle("hidden", !isMaster);
+
+  // If currently on a hidden tab, jump to upload
+  const activeTab = document.querySelector(".tab.active")?.dataset?.tab;
+  if (!isMaster && (activeTab === "zones" || activeTab === "admins")) {
+    switchTab("upload");
+  }
 }
 
-// Show Error Message
-function showError(message) {
-    if (!loginError) return;
-    
-    loginError.textContent = message;
-    loginError.classList.add('show');
-    
-    setTimeout(() => {
-        loginError.classList.remove('show');
-    }, 5000);
+function setAuthedUI(user) {
+  ui.btnLogin.classList.add("hidden");
+  ui.userChip.classList.remove("hidden");
+  ui.app.classList.remove("hidden");
+
+  ui.userName.textContent = user.displayName || "User";
+  ui.userEmail.textContent = user.email || "—";
+  ui.avatar.textContent = (user.displayName?.[0] || user.email?.[0] || "U").toUpperCase();
 }
 
-// Check User Role and Create User Document
-async function checkUserRole(user) {
-    try {
-        const userDoc = await db.collection('users').doc(user.uid).get();
-        
-        if (userDoc.exists) {
-            userData = userDoc.data();
-            return userData.role;
-        } else {
-            // First time login - determine role
-            let role = 'visitor';
-            
-            if (user.email === MASTER_ADMIN_EMAIL) {
-                role = 'master_admin';
-            } else {
-                // Check if user is in admin invites
-                const adminInvite = await db.collection('admin_invites')
-                    .where('email', '==', user.email)
-                    .where('status', '==', 'pending')
-                    .limit(1)
-                    .get();
-                
-                if (!adminInvite.empty) {
-                    role = 'regular_admin';
-                    // Update invite status
-                    await db.collection('admin_invites').doc(adminInvite.docs[0].id).update({
-                        status: 'accepted',
-                        acceptedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                        userId: user.uid
-                    });
-                }
-            }
-            
-            // Create user document
-            userData = {
-                email: user.email,
-                role: role,
-                status: role === 'visitor' ? 'pending' : 'active',
-                name: user.displayName || user.email.split('@')[0],
-                hub: '',
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                lastLogin: firebase.firestore.FieldValue.serverTimestamp()
-            };
-            
-            await db.collection('users').doc(user.uid).set(userData);
-            
-            return role;
-        }
-    } catch (error) {
-        console.error('Error checking user role:', error);
-        return 'visitor';
-    }
+function setLoggedOutUI() {
+  ui.btnLogin.classList.remove("hidden");
+  ui.userChip.classList.add("hidden");
+  ui.app.classList.add("hidden");
+  ui.rolePill.textContent = "—";
+  ui.statusPill.textContent = "—";
 }
 
-// Google Login
-async function googleLogin() {
-    try {
-        showLoading();
-        const provider = new firebase.auth.GoogleAuthProvider();
-        provider.addScope('email');
-        provider.addScope('profile');
-        
-        const result = await auth.signInWithPopup(provider);
-        
-        const user = result.user;
-        const role = await checkUserRole(user);
-        
-        currentUser = user;
-        userRole = role;
-        
-        // Update last login time
-        await db.collection('users').doc(user.uid).update({
-            lastLogin: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        
-        // Show appropriate UI based on role
-        updateUIForRole();
-        
-        // Switch to dashboard
-        loginPage.classList.add('hidden');
-        dashboardPage.classList.remove('hidden');
-        
-        // Initialize dashboard
-        initializeDashboard();
-        
-        showToast('সফলভাবে লগইন হয়েছে!', 'success');
-        
-    } catch (error) {
-        console.error('Login error:', error);
-        if (error.code === 'auth/popup-blocked') {
-            showError('পপআপ ব্লক করা আছে। দয়া করে পপআপ অনুমতি দিন।');
-        } else if (error.code === 'auth/cancelled-popup-request') {
-            showError('লগইন বাতিল করা হয়েছে।');
-        } else {
-            showError('লগইন ত্রুটি: ' + error.message);
-        }
-    } finally {
-        hideLoading();
-    }
+/* =========================
+   TABS
+========================= */
+function switchTab(name) {
+  ui.tabs.forEach(t => t.classList.toggle("active", t.dataset.tab === name));
+  Object.entries(ui.panels).forEach(([k, el]) => {
+    el.classList.toggle("active", k === name);
+  });
 }
 
-// Logout
-async function logout() {
-    try {
-        showLoading();
-        await auth.signOut();
-        currentUser = null;
-        userRole = null;
-        userData = null;
-        
-        dashboardPage.classList.add('hidden');
-        loginPage.classList.remove('hidden');
-        loginError.classList.remove('show');
-        
-        showToast('সফলভাবে লগআউট হয়েছে!', 'success');
-    } catch (error) {
-        console.error('Logout error:', error);
-        showError('লগআউট ত্রুটি: ' + error.message);
-    } finally {
-        hideLoading();
-    }
+/* =========================
+   DATA: ZONES
+========================= */
+let unsubscribeZones = null;
+
+function renderZoneOptions(zones) {
+  ui.zoneSelect.innerHTML = "";
+  if (!zones.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "No zones (Master admin add zone)";
+    ui.zoneSelect.appendChild(opt);
+    return;
+  }
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Zone সিলেক্ট করুন";
+  ui.zoneSelect.appendChild(placeholder);
+
+  zones.forEach(z => {
+    const opt = document.createElement("option");
+    opt.value = z.id;
+    opt.textContent = z.name + (z.active === false ? " (inactive)" : "");
+    opt.disabled = (z.active === false);
+    ui.zoneSelect.appendChild(opt);
+  });
 }
 
-// Update UI based on user role
-function updateUIForRole() {
-    if (!currentUser) return;
-    
-    if (adminEmailSpan) {
-        adminEmailSpan.textContent = currentUser.email;
-    }
-    
-    if (adminRoleSpan) {
-        if (userRole === 'master_admin') {
-            adminRoleSpan.textContent = 'মাস্টার অ্যাডমিন';
-            adminRoleSpan.className = 'user-role master-admin';
-            if (adminMenu) adminMenu.classList.remove('hidden');
-            if (zoneMenu) zoneMenu.classList.remove('hidden');
-        } else if (userRole === 'regular_admin') {
-            adminRoleSpan.textContent = 'রেগুলার অ্যাডমিন';
-            adminRoleSpan.className = 'user-role regular-admin';
-            if (adminMenu) adminMenu.classList.add('hidden');
-            if (zoneMenu) zoneMenu.classList.add('hidden');
-        } else {
-            adminRoleSpan.textContent = 'ভিজিটর';
-            adminRoleSpan.className = 'user-role visitor';
-            // Visitors shouldn't see admin dashboard
-            logout();
-            showError('আপনি অ্যাডমিন নন। ভিজিটর পেজে যান।');
-            return;
-        }
-    }
-}
+function renderZoneTable(zones) {
+  if (!zones.length) {
+    ui.zoneTbody.innerHTML = `<tr><td colspan="4" class="muted">কোনো zone নেই</td></tr>`;
+    return;
+  }
 
-// Initialize Dashboard
-function initializeDashboard() {
-    initializeDate();
-    loadDashboardStats();
-    loadZones();
-    loadRecentActivities();
-    loadRecentUploads();
-    if (userRole === 'master_admin') {
-        loadAdmins();
-    }
-    loadVisitorRequests();
-    
-    // Set up real-time listeners
-    setupRealtimeListeners();
-}
+  ui.zoneTbody.innerHTML = zones.map(z => {
+    const created = z.createdAt?.toDate ? z.createdAt.toDate().toLocaleString() : "—";
+    const statusBadge = z.active === false
+      ? `<span class="badge bad">inactive</span>`
+      : `<span class="badge ok">active</span>`;
 
-// Setup Real-time Listeners
-function setupRealtimeListeners() {
-    // Listen for zones changes
-    db.collection('zones')
-        .where('status', '==', 'active')
-        .onSnapshot((snapshot) => {
-            loadZones();
-            loadDashboardStats();
-        });
-    
-    // Listen for uploads changes
-    db.collection('uploads')
-        .orderBy('uploadedAt', 'desc')
-        .limit(10)
-        .onSnapshot((snapshot) => {
-            loadRecentUploads();
-            loadDashboardStats();
-        });
-    
-    // Listen for user changes (for admins and visitors)
-    db.collection('users')
-        .onSnapshot((snapshot) => {
-            loadDashboardStats();
-            if (userRole === 'master_admin') {
-                loadAdmins();
-            }
-            loadVisitorRequests(visitorFilter ? visitorFilter.value : 'all');
-        });
-}
-
-// Load Dashboard Stats
-async function loadDashboardStats() {
-    try {
-        // Total Zones
-        const zonesSnapshot = await db.collection('zones')
-            .where('status', '==', 'active')
-            .get();
-        if (totalZonesSpan) {
-            totalZonesSpan.textContent = zonesSnapshot.size;
-        }
-        
-        // Total Active Admins
-        const adminsSnapshot = await db.collection('users')
-            .where('role', 'in', ['master_admin', 'regular_admin'])
-            .where('status', '==', 'active')
-            .get();
-        if (totalAdminsSpan) {
-            totalAdminsSpan.textContent = adminsSnapshot.size;
-        }
-        
-        // Pending Visitor Requests
-        const pendingSnapshot = await db.collection('users')
-            .where('role', '==', 'visitor')
-            .where('status', '==', 'pending')
-            .get();
-        if (pendingRequestsSpan) {
-            pendingRequestsSpan.textContent = pendingSnapshot.size;
-        }
-        
-        // Today's Uploads
-        const today = new Date().toISOString().split('T')[0];
-        const uploadsSnapshot = await db.collection('uploads')
-            .where('uploadDate', '==', today)
-            .get();
-        if (todayUploadsSpan) {
-            todayUploadsSpan.textContent = uploadsSnapshot.size;
-        }
-        
-    } catch (error) {
-        console.error('Error loading stats:', error);
-    }
-}
-
-// Load Zones
-async function loadZones() {
-    try {
-        const zonesSnapshot = await db.collection('zones')
-            .where('status', '==', 'active')
-            .orderBy('createdAt', 'desc')
-            .get();
-        
-        if (zonesList) {
-            zonesList.innerHTML = '';
-            
-            if (zonesSnapshot.empty) {
-                zonesList.innerHTML = '<div class="empty-state">কোন Zone পাওয়া যায়নি</div>';
-            } else {
-                zonesSnapshot.forEach(doc => {
-                    const zone = doc.data();
-                    const zoneItem = createZoneItem(doc.id, zone);
-                    zonesList.appendChild(zoneItem);
-                });
-            }
-        }
-        
-        // Populate zone select for file upload
-        populateZoneSelects(zonesSnapshot);
-        
-    } catch (error) {
-        console.error('Error loading zones:', error);
-    }
-}
-
-// Create Zone Item HTML
-function createZoneItem(id, zone) {
-    const div = document.createElement('div');
-    div.className = 'zone-item';
-    div.innerHTML = `
-        <div class="zone-item-info">
-            <div class="zone-name">${zone.name || 'No Name'}</div>
-            ${zone.description ? `<div class="zone-desc">${zone.description}</div>` : ''}
-            <div class="zone-meta">
-                <small>আইডি: ${id.substring(0, 8)}...</small>
-            </div>
-        </div>
-        ${userRole === 'master_admin' ? `
-            <div class="zone-actions">
-                <button class="action-btn edit-btn" onclick="editZone('${id}')">
-                    <i class="fas fa-edit"></i> এডিট
-                </button>
-                <button class="action-btn delete-btn" onclick="deleteZone('${id}')">
-                    <i class="fas fa-trash"></i> ডিলিট
-                </button>
-            </div>
-        ` : ''}
+    return `
+      <tr>
+        <td>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input class="input" style="max-width:320px;" value="${escapeHtml(z.name)}" data-zone-name="${z.id}" />
+          </div>
+        </td>
+        <td>${statusBadge}</td>
+        <td>${escapeHtml(created)}</td>
+        <td style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn" data-zone-save="${z.id}">Save</button>
+          <button class="btn" data-zone-toggle="${z.id}">
+            ${z.active === false ? "Activate" : "Deactivate"}
+          </button>
+          <button class="btn danger" data-zone-delete="${z.id}">Delete</button>
+        </td>
+      </tr>
     `;
-    return div;
+  }).join("");
 }
 
-// Populate Zone Selects for File Upload
-function populateZoneSelects(zonesSnapshot) {
-    if (!morningZoneSelect || !finalZoneSelect) return;
-    
-    // Clear existing options except first
-    while (morningZoneSelect.options.length > 1) {
-        morningZoneSelect.remove(1);
-    }
-    while (finalZoneSelect.options.length > 1) {
-        finalZoneSelect.remove(1);
-    }
-    
-    if (zonesSnapshot && !zonesSnapshot.empty) {
-        zonesSnapshot.forEach(doc => {
-            const zone = doc.data();
-            const option1 = document.createElement('option');
-            option1.value = doc.id;
-            option1.textContent = zone.name;
-            morningZoneSelect.appendChild(option1.cloneNode(true));
-            
-            const option2 = option1.cloneNode(true);
-            finalZoneSelect.appendChild(option2);
-        });
-    }
+function watchZones() {
+  const zonesRef = collection(db, "zones");
+  const qy = query(zonesRef, orderBy("createdAt", "desc"));
+  if (unsubscribeZones) unsubscribeZones();
+
+  unsubscribeZones = onSnapshot(qy, (snap) => {
+    const zones = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // dropdown: only show all (but disable inactive); in table show all
+    renderZoneOptions(zones);
+    if (me.role === "master") renderZoneTable(zones);
+  });
 }
 
-// Add/Edit Zone
-async function saveZone(e) {
-    e.preventDefault();
-    
-    const zoneId = zoneIdInput.value;
-    const zoneName = zoneNameInput.value.trim();
-    const zoneDescription = zoneDescriptionInput.value.trim();
-    
-    if (!zoneName) {
-        showToast('দয়া করে Zone নাম দিন!', 'error');
-        return;
-    }
-    
-    const zoneData = {
-        name: zoneName,
-        description: zoneDescription,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
-    
-    try {
-        showLoading();
-        
-        if (zoneId) {
-            // Update existing zone
-            await db.collection('zones').doc(zoneId).update(zoneData);
-            showToast('Zone সফলভাবে আপডেট হয়েছে!', 'success');
-        } else {
-            // Add new zone
-            zoneData.createdBy = currentUser.uid;
-            zoneData.createdByEmail = currentUser.email;
-            zoneData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-            zoneData.status = 'active';
-            
-            await db.collection('zones').add(zoneData);
-            showToast('Zone সফলভাবে যোগ হয়েছে!', 'success');
-        }
-        
-        closeZoneModal.click();
-        zoneForm.reset();
-        
-    } catch (error) {
-        console.error('Error saving zone:', error);
-        showToast('Zone সংরক্ষণে ত্রুটি হয়েছে!', 'error');
-    } finally {
-        hideLoading();
-    }
+async function addZone() {
+  const name = (ui.newZoneName.value || "").trim();
+  if (!name) return showAlert("warn", "Zone নাম দিন।");
+  setLoading(ui.btnAddZone, true);
+
+  try {
+    await addDoc(collection(db, "zones"), {
+      name,
+      active: true,
+      createdAt: serverTimestamp(),
+      createdBy: me.email || null
+    });
+    ui.newZoneName.value = "";
+    showAlert("ok", "Zone যোগ হয়েছে।");
+  } catch (e) {
+    showAlert("bad", `Zone add failed: ${e.message}`);
+  } finally {
+    setLoading(ui.btnAddZone, false);
+  }
 }
 
-// Edit Zone
-async function editZone(zoneId) {
-    try {
-        showLoading();
-        const zoneDoc = await db.collection('zones').doc(zoneId).get();
-        
-        if (zoneDoc.exists) {
-            const zone = zoneDoc.data();
-            zoneIdInput.value = zoneId;
-            zoneNameInput.value = zone.name || '';
-            zoneDescriptionInput.value = zone.description || '';
-            
-            const modalTitle = document.getElementById('modalTitle');
-            if (modalTitle) {
-                modalTitle.textContent = 'Zone এডিট করুন';
-            }
-            zoneModal.classList.remove('hidden');
-        }
-    } catch (error) {
-        console.error('Error editing zone:', error);
-        showToast('Zone লোড করতে ত্রুটি হয়েছে!', 'error');
-    } finally {
-        hideLoading();
-    }
+async function saveZoneName(zoneId) {
+  const input = document.querySelector(`[data-zone-name="${zoneId}"]`);
+  const name = (input?.value || "").trim();
+  if (!name) return showAlert("warn", "Zone নাম ফাঁকা রাখা যাবে না।");
+
+  try {
+    await updateDoc(doc(db, "zones", zoneId), { name, updatedAt: serverTimestamp() });
+    showAlert("ok", "Zone update হয়েছে।");
+  } catch (e) {
+    showAlert("bad", `Zone update failed: ${e.message}`);
+  }
 }
 
-// Delete Zone
+async function toggleZone(zoneId) {
+  try {
+    const snap = await getDoc(doc(db, "zones", zoneId));
+    if (!snap.exists()) return;
+    const cur = snap.data().active !== false;
+    await updateDoc(doc(db, "zones", zoneId), { active: !cur, updatedAt: serverTimestamp() });
+    showAlert("ok", `Zone ${cur ? "deactivate" : "activate"} হয়েছে।`);
+  } catch (e) {
+    showAlert("bad", `Zone toggle failed: ${e.message}`);
+  }
+}
+
 async function deleteZone(zoneId) {
-    if (!confirm('আপনি কি এই Zone ডিলিট করতে চান?')) return;
-    
-    try {
-        showLoading();
-        await db.collection('zones').doc(zoneId).update({
-            status: 'inactive',
-            deletedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            deletedBy: currentUser.uid
-        });
-        
-        showToast('Zone সফলভাবে ডিলিট হয়েছে!', 'success');
-    } catch (error) {
-        console.error('Error deleting zone:', error);
-        showToast('Zone ডিলিট করতে ত্রুটি হয়েছে!', 'error');
-    } finally {
-        hideLoading();
-    }
+  if (!confirm("আপনি কি নিশ্চিত? Zone স্থায়ীভাবে Delete হবে।")) return;
+  try {
+    await deleteDoc(doc(db, "zones", zoneId));
+    showAlert("ok", "Zone delete হয়েছে।");
+  } catch (e) {
+    showAlert("bad", `Zone delete failed: ${e.message}`);
+  }
 }
 
-// File Upload Functions
-async function uploadFile(e, fileType) {
-    e.preventDefault();
-    
-    const form = e.target;
-    const zoneSelect = fileType === 'morning' ? morningZoneSelect : finalZoneSelect;
-    const dateInput = fileType === 'morning' ? morningDateInput : finalDateInput;
-    const fileInput = fileType === 'morning' ? morningFileInput : finalFileInput;
-    
-    const zoneId = zoneSelect ? zoneSelect.value : '';
-    const uploadDate = dateInput ? dateInput.value : '';
-    const file = fileInput ? fileInput.files[0] : null;
-    
-    if (!zoneId) {
-        showToast('দয়া করে Zone সিলেক্ট করুন!', 'error');
-        return;
-    }
-    
-    if (!file) {
-        showToast('দয়া করে একটি ফাইল সিলেক্ট করুন!', 'error');
-        return;
-    }
-    
-    // Check if file is for today
-    const today = new Date().toISOString().split('T')[0];
-    if (uploadDate !== today) {
-        showToast('শুধু আজকের তারিখের ফাইল আপলোড করা যাবে!', 'error');
-        return;
-    }
-    
-    // Check file type
-    const validExtensions = ['.csv', '.xlsx', '.xls'];
-    const fileName = file.name.toLowerCase();
-    const isValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
-    
-    if (!isValidExtension) {
-        showToast('শুধু CSV বা Excel ফাইল আপলোড করা যাবে! (csv, xlsx, xls)', 'error');
-        return;
-    }
-    
-    // Check file size (max 10MB)
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    if (file.size > maxSize) {
-        showToast('ফাইল সাইজ 10MB এর বেশি হতে পারবে না!', 'error');
-        return;
-    }
-    
-    try {
-        showLoading();
-        
-        // Get zone info
-        const zoneDoc = await db.collection('zones').doc(zoneId).get();
-        if (!zoneDoc.exists) {
-            throw new Error('Zone পাওয়া যায়নি!');
-        }
-        
-        const zone = zoneDoc.data();
-        
-        // Create unique filename
-        const timestamp = Date.now();
-        const uniqueFileName = `${fileType}_${zoneId}_${timestamp}_${file.name}`;
-        
-        // Upload file to Firebase Storage
-        const storageRef = storage.ref();
-        const fileRef = storageRef.child(`uploads/${zoneId}/${uploadDate}/${fileType}/${uniqueFileName}`);
-        
-        // Upload file
-        await fileRef.put(file);
-        
-        // Get download URL
-        const downloadURL = await fileRef.getDownloadURL();
-        
-        // Save upload record to Firestore
-        await db.collection('uploads').add({
-            fileName: file.name,
-            originalName: file.name,
-            uniqueFileName: uniqueFileName,
-            fileType: fileType,
-            zoneId: zoneId,
-            zoneName: zone.name,
-            uploadDate: uploadDate,
-            uploadedBy: currentUser.uid,
-            uploadedByEmail: currentUser.email,
-            uploadedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            fileSize: (file.size / 1024 / 1024).toFixed(2) + ' MB',
-            downloadURL: downloadURL,
-            status: 'uploaded'
-        });
-        
-        // Reset form
-        form.reset();
-        if (fileType === 'morning' && morningFileName) {
-            morningFileName.classList.remove('show');
-            morningFileName.textContent = '';
-        } else if (fileType === 'final' && finalFileName) {
-            finalFileName.classList.remove('show');
-            finalFileName.textContent = '';
-        }
-        
-        // Reset file input
-        if (fileInput) {
-            fileInput.value = '';
-        }
-        
-        showToast(`${fileType === 'morning' ? 'মর্নিং' : 'ফাইনাল'} ফাইল সফলভাবে আপলোড হয়েছে!`, 'success');
-        
-    } catch (error) {
-        console.error('Error uploading file:', error);
-        showToast('ফাইল আপলোডে ত্রুটি হয়েছে: ' + error.message, 'error');
-    } finally {
-        hideLoading();
-    }
-}
+/* =========================
+   DATA: ADMINS (MASTER ONLY)
+========================= */
+let unsubscribeAdmins = null;
 
-// Load Recent Uploads
-async function loadRecentUploads() {
-    try {
-        const uploadsSnapshot = await db.collection('uploads')
-            .orderBy('uploadedAt', 'desc')
-            .limit(10)
-            .get();
-        
-        if (uploadsList) {
-            uploadsList.innerHTML = '';
-            
-            if (uploadsSnapshot.empty) {
-                uploadsList.innerHTML = '<div class="empty-state">কোন আপলোড পাওয়া যায়নি</div>';
-            } else {
-                uploadsSnapshot.forEach(doc => {
-                    const upload = doc.data();
-                    const uploadItem = createUploadItem(doc.id, upload);
-                    uploadsList.appendChild(uploadItem);
-                });
-            }
-        }
-        
-    } catch (error) {
-        console.error('Error loading uploads:', error);
-    }
-}
+function renderAdminTable(admins) {
+  if (!admins.length) {
+    ui.adminTbody.innerHTML = `<tr><td colspan="5" class="muted">কোনো admin নেই</td></tr>`;
+    return;
+  }
 
-// Create Upload Item HTML
-function createUploadItem(id, upload) {
-    let uploadedAt = 'এখন';
-    if (upload.uploadedAt && upload.uploadedAt.toDate) {
-        const date = upload.uploadedAt.toDate();
-        uploadedAt = date.toLocaleTimeString('bn-BD', { 
-            hour: '2-digit', 
-            minute: '2-digit',
-            hour12: true
-        });
-    }
-    
-    const div = document.createElement('div');
-    div.className = 'upload-item';
-    div.innerHTML = `
-        <div class="upload-item-info">
-            <div class="upload-name">
-                <strong>${upload.fileType === 'morning' ? '☀️ মর্নিং' : '🏁 ফাইনাল'}</strong> - ${upload.zoneName || 'Zone'}
-            </div>
-            <div class="upload-details">
-                ${upload.fileName} • ${upload.fileSize || '0 MB'} • ${uploadedAt}
-            </div>
-            <div class="upload-meta">
-                <small>তারিখ: ${upload.uploadDate} • আপলোড করেছেন: ${upload.uploadedByEmail || currentUser.email}</small>
-            </div>
-        </div>
-        <div class="upload-actions">
-            ${upload.downloadURL ? `
-                <a href="${upload.downloadURL}" target="_blank" class="action-btn" style="background: #667eea; color: white;">
-                    <i class="fas fa-download"></i> ডাউনলোড
-                </a>
-            ` : ''}
-        </div>
+  ui.adminTbody.innerHTML = admins.map(a => {
+    const created = a.createdAt?.toDate ? a.createdAt.toDate().toLocaleString() : "—";
+    const status = a.active === false
+      ? `<span class="badge bad">blocked</span>`
+      : `<span class="badge ok">active</span>`;
+    const role = a.role === "master" ? "master" : "admin";
+
+    return `
+      <tr>
+        <td>${escapeHtml(a.email || "—")}</td>
+        <td><span class="badge warn">${escapeHtml(role)}</span></td>
+        <td>${status}</td>
+        <td>${escapeHtml(created)}</td>
+        <td style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn" data-admin-toggle="${a.id}">
+            ${a.active === false ? "Activate" : "Block"}
+          </button>
+          <button class="btn danger" data-admin-delete="${a.id}">Delete</button>
+        </td>
+      </tr>
     `;
-    return div;
+  }).join("");
 }
 
-// Load Recent Activities
-async function loadRecentActivities() {
-    try {
-        // Get recent uploads for activities
-        const uploadsSnapshot = await db.collection('uploads')
-            .orderBy('uploadedAt', 'desc')
-            .limit(5)
-            .get();
-        
-        if (activityList) {
-            activityList.innerHTML = '';
-            
-            if (uploadsSnapshot.empty) {
-                activityList.innerHTML = '<div class="empty-state">কোন কার্যক্রম পাওয়া যায়নি</div>';
-            } else {
-                uploadsSnapshot.forEach(doc => {
-                    const upload = doc.data();
-                    const activityItem = createActivityItem(upload);
-                    activityList.appendChild(activityItem);
-                });
-            }
-        }
-        
-    } catch (error) {
-        console.error('Error loading activities:', error);
-    }
+function watchAdmins() {
+  if (unsubscribeAdmins) unsubscribeAdmins();
+  const adminsRef = collection(db, "admins");
+  const qy = query(adminsRef, orderBy("createdAt", "desc"));
+  unsubscribeAdmins = onSnapshot(qy, (snap) => {
+    const admins = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderAdminTable(admins);
+  });
 }
 
-// Create Activity Item HTML
-function createActivityItem(upload) {
-    let timeAgo = 'এখন';
-    if (upload.uploadedAt && upload.uploadedAt.toDate) {
-        const date = upload.uploadedAt.toDate();
-        const now = new Date();
-        const diffMs = now - date;
-        const diffMins = Math.floor(diffMs / 60000);
-        
-        if (diffMins < 1) timeAgo = 'এখন';
-        else if (diffMins < 60) timeAgo = `${diffMins} মিনিট আগে`;
-        else if (diffMins < 1440) timeAgo = `${Math.floor(diffMins / 60)} ঘন্টা আগে`;
-        else timeAgo = `${Math.floor(diffMins / 1440)} দিন আগে`;
-    }
-    
-    const div = document.createElement('div');
-    div.className = 'activity-item';
-    div.innerHTML = `
-        <div class="activity-info">
-            <div class="activity-text">
-                <strong>${upload.uploadedByEmail || 'কেউ'}</strong> ${upload.fileType === 'morning' ? 'মর্নিং' : 'ফাইনাল'} ফাইল আপলোড করেছেন
-            </div>
-            <div class="activity-time">${timeAgo}</div>
-        </div>
-    `;
-    return div;
+async function addAdminByEmail() {
+  const email = (ui.newAdminEmail.value || "").trim().toLowerCase();
+  if (!email) return showAlert("warn", "Admin Gmail দিন।");
+  if (!email.includes("@")) return showAlert("warn", "Valid Gmail/Email দিন।");
+  if (email === MASTER_EMAIL.toLowerCase()) return showAlert("warn", "Master email কে Regular admin করা যাবে না।");
+
+  setLoading(ui.btnAddAdmin, true);
+  try {
+    // Use email as docId for uniqueness
+    await setDoc(doc(db, "admins", email), {
+      email,
+      role: "admin",
+      active: true,
+      createdAt: serverTimestamp(),
+      createdBy: me.email || null
+    }, { merge: true });
+
+    ui.newAdminEmail.value = "";
+    showAlert("ok", "Regular admin যোগ হয়েছে।");
+  } catch (e) {
+    showAlert("bad", `Admin add failed: ${e.message}`);
+  } finally {
+    setLoading(ui.btnAddAdmin, false);
+  }
 }
 
-// Admin Management Functions
-async function loadAdmins() {
-    if (userRole !== 'master_admin' || !adminsList) return;
-    
-    try {
-        const adminsSnapshot = await db.collection('users')
-            .where('role', 'in', ['master_admin', 'regular_admin'])
-            .orderBy('createdAt', 'desc')
-            .get();
-        
-        adminsList.innerHTML = '';
-        
-        if (adminsSnapshot.empty) {
-            adminsList.innerHTML = '<div class="empty-state">কোন অ্যাডমিন পাওয়া যায়নি</div>';
-        } else {
-            adminsSnapshot.forEach(doc => {
-                const admin = doc.data();
-                const adminItem = createAdminItem(doc.id, admin);
-                adminsList.appendChild(adminItem);
-            });
-        }
-        
-    } catch (error) {
-        console.error('Error loading admins:', error);
-    }
+async function toggleAdmin(adminId) {
+  try {
+    const refDoc = doc(db, "admins", adminId);
+    const snap = await getDoc(refDoc);
+    if (!snap.exists()) return;
+    const cur = snap.data().active !== false;
+    await updateDoc(refDoc, { active: !cur, updatedAt: serverTimestamp() });
+    showAlert("ok", `Admin ${cur ? "blocked" : "activated"} হয়েছে।`);
+  } catch (e) {
+    showAlert("bad", `Admin toggle failed: ${e.message}`);
+  }
 }
 
-// Create Admin Item HTML
-function createAdminItem(id, admin) {
-    const isCurrentUser = currentUser && currentUser.email === admin.email;
-    
-    const div = document.createElement('div');
-    div.className = 'admin-item';
-    div.innerHTML = `
-        <div class="admin-item-info">
-            <div class="admin-name">
-                <strong>${admin.role === 'master_admin' ? '👑 মাস্টার' : '👨‍💼 রেগুলার'} অ্যাডমিন</strong>
-            </div>
-            <div class="admin-email">${admin.email}</div>
-            <div class="admin-meta">
-                <small>স্ট্যাটাস: </small>
-                <span class="status-badge ${admin.status === 'active' ? 'status-approved' : 'status-blocked'}">
-                    ${admin.status === 'active' ? 'সক্রিয়' : 'ব্লকড'}
-                </span>
-            </div>
-        </div>
-        ${!isCurrentUser ? `
-            <div class="admin-actions">
-                <button class="action-btn ${admin.status === 'active' ? 'block-btn' : 'approve-btn'}" 
-                        onclick="toggleAdminStatus('${id}', '${admin.status === 'active' ? 'block' : 'activate'}')">
-                    <i class="fas fa-${admin.status === 'active' ? 'ban' : 'check'}"></i>
-                    ${admin.status === 'active' ? 'ব্লক' : 'আনব্লক'}
-                </button>
-            </div>
-        ` : '<div style="padding: 10px;">(আপনি)</div>'}
-    `;
-    return div;
+async function deleteAdmin(adminId) {
+  if (!confirm("আপনি কি নিশ্চিত? Admin স্থায়ীভাবে Delete হবে।")) return;
+  try {
+    await deleteDoc(doc(db, "admins", adminId));
+    showAlert("ok", "Admin delete হয়েছে।");
+  } catch (e) {
+    showAlert("bad", `Admin delete failed: ${e.message}`);
+  }
 }
 
-// Toggle Admin Status
-async function toggleAdminStatus(adminId, action) {
-    const confirmMessage = action === 'block' 
-        ? 'আপনি কি এই অ্যাডমিনকে ব্লক করতে চান?' 
-        : 'আপনি কি এই অ্যাডমিনকে আনব্লক করতে চান?';
-    
-    if (!confirm(confirmMessage)) return;
-    
-    try {
-        showLoading();
-        await db.collection('users').doc(adminId).update({
-            status: action === 'block' ? 'blocked' : 'active',
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedBy: currentUser.uid
-        });
-        
-        showToast(`অ্যাডমিন সফলভাবে ${action === 'block' ? 'ব্লক' : 'আনব্লক'} হয়েছে!`, 'success');
-        
-    } catch (error) {
-        console.error('Error toggling admin status:', error);
-        showToast('অপারেশনে ত্রুটি হয়েছে!', 'error');
-    } finally {
-        hideLoading();
-    }
+/* =========================
+   DATA: VISITOR REQUESTS (ALL ADMINS)
+========================= */
+let visitorFilter = "pending";
+
+function statusBadge(s) {
+  if (s === "approved") return `<span class="badge ok">approved</span>`;
+  if (s === "blocked") return `<span class="badge bad">blocked</span>`;
+  return `<span class="badge warn">pending</span>`;
 }
 
-// Add New Admin
-async function addNewAdmin(e) {
-    e.preventDefault();
-    
-    const email = adminEmailInput ? adminEmailInput.value.trim() : '';
-    const role = document.querySelector('input[name="adminRole"]:checked') ? 
-                 document.querySelector('input[name="adminRole"]:checked').value : 'regular_admin';
-    
-    if (!email) {
-        showToast('দয়া করে জিমেইল এড্রেস দিন!', 'error');
-        return;
+async function loadVisitorRequests() {
+  ui.visitorTbody.innerHTML = `<tr><td colspan="6" class="muted">লোড হচ্ছে…</td></tr>`;
+  try {
+    let qy;
+    const refCol = collection(db, "visitor_requests");
+
+    if (visitorFilter === "all") {
+      qy = query(refCol, orderBy("requestedAt", "desc"), limit(200));
+    } else {
+      qy = query(refCol, where("status", "==", visitorFilter), orderBy("requestedAt", "desc"), limit(200));
     }
-    
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-        showToast('দয়া করে সঠিক জিমেইল এড্রেস দিন!', 'error');
-        return;
+
+    const snap = await getDocs(qy);
+    const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    ui.visitorCount.textContent = String(rows.length);
+    if (!rows.length) {
+      ui.visitorTbody.innerHTML = `<tr><td colspan="6" class="muted">কোনো রিকোয়েস্ট নেই</td></tr>`;
+      return;
     }
-    
-    try {
-        showLoading();
-        
-        // Check if user already exists
-        const userQuery = await db.collection('users').where('email', '==', email).get();
-        if (!userQuery.empty) {
-            showToast('এই জিমেইল দিয়ে ইতিমধ্যে অ্যাকাউন্ট আছে!', 'error');
-            hideLoading();
-            return;
-        }
-        
-        // Create admin invite
-        await db.collection('admin_invites').add({
-            email: email,
-            role: role,
-            invitedBy: currentUser.uid,
-            invitedByEmail: currentUser.email,
-            invitedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            status: 'pending'
-        });
-        
-        // Reset form
-        if (newAdminForm) newAdminForm.reset();
-        if (addAdminForm) addAdminForm.classList.add('hidden');
-        
-        showToast(`অ্যাডমিন ইনভাইট ${email} ইমেইলে পাঠানো হয়েছে!`, 'success');
-        
-    } catch (error) {
-        console.error('Error adding admin:', error);
-        showToast('অ্যাডমিন যোগ করতে ত্রুটি হয়েছে: ' + error.message, 'error');
-    } finally {
-        hideLoading();
-    }
+
+    ui.visitorTbody.innerHTML = rows.map(v => {
+      const time = v.requestedAt?.toDate ? v.requestedAt.toDate().toLocaleString() : "—";
+      const email = v.email || v.id || "—";
+      const name = v.name || "—";
+      const hub = v.hubName || "—";
+      const st = v.status || "pending";
+
+      const approveBtn = st !== "approved"
+        ? `<button class="btn" data-visitor-approve="${escapeHtml(v.id)}">Approve</button>`
+        : "";
+
+      const blockBtn = st !== "blocked"
+        ? `<button class="btn danger" data-visitor-block="${escapeHtml(v.id)}">Block</button>`
+        : `<button class="btn" data-visitor-unblock="${escapeHtml(v.id)}">Unblock</button>`;
+
+      return `
+        <tr>
+          <td>${escapeHtml(email)}</td>
+          <td>${escapeHtml(name)}</td>
+          <td>${escapeHtml(hub)}</td>
+          <td>${statusBadge(st)}</td>
+          <td>${escapeHtml(time)}</td>
+          <td style="display:flex;gap:8px;flex-wrap:wrap;">
+            ${approveBtn}
+            ${blockBtn}
+          </td>
+        </tr>
+      `;
+    }).join("");
+
+  } catch (e) {
+    showAlert("bad", `Visitor requests load failed: ${e.message}`);
+  }
 }
 
-// Load Visitor Requests
-async function loadVisitorRequests(filter = 'all') {
-    try {
-        let query = db.collection('users')
-            .where('role', '==', 'visitor')
-            .orderBy('createdAt', 'desc');
-        
-        if (filter !== 'all') {
-            query = query.where('status', '==', filter);
-        }
-        
-        const visitorsSnapshot = await query.get();
-        
-        if (visitorsList) {
-            visitorsList.innerHTML = '';
-            
-            if (visitorsSnapshot.empty) {
-                visitorsList.innerHTML = '<div class="empty-state">কোন ভিজিটর রিকোয়েস্ট পাওয়া যায়নি</div>';
-            } else {
-                visitorsSnapshot.forEach(doc => {
-                    const visitor = doc.data();
-                    const visitorItem = createVisitorItem(doc.id, visitor);
-                    visitorsList.appendChild(visitorItem);
-                });
-            }
-        }
-        
-    } catch (error) {
-        console.error('Error loading visitors:', error);
-    }
+async function setVisitorStatus(id, status) {
+  try {
+    await setDoc(doc(db, "visitor_requests", id), {
+      status,
+      updatedAt: serverTimestamp(),
+      updatedBy: me.email || null,
+      ...(status === "approved" ? { approvedAt: serverTimestamp(), approvedBy: me.email || null } : {})
+    }, { merge: true });
+
+    showAlert("ok", `Visitor ${status} হয়েছে।`);
+    await loadVisitorRequests();
+  } catch (e) {
+    showAlert("bad", `Visitor update failed: ${e.message}`);
+  }
 }
 
-// Create Visitor Item HTML
-function createVisitorItem(id, visitor) {
-    let dateString = 'আজ';
-    if (visitor.createdAt && visitor.createdAt.toDate) {
-        const date = visitor.createdAt.toDate();
-        dateString = date.toLocaleDateString('bn-BD');
-    }
-    
-    const div = document.createElement('div');
-    div.className = 'visitor-item';
-    div.innerHTML = `
-        <div class="visitor-item-info">
-            <div class="visitor-name">
-                <strong>${visitor.name || 'নাম নেই'}</strong>
-            </div>
-            <div class="visitor-email">${visitor.email}</div>
-            <div class="visitor-details">
-                ${visitor.hub ? `হাব: ${visitor.hub} • ` : ''}
-                তারিখ: ${dateString}
-            </div>
-            <div class="visitor-meta">
-                <small>স্ট্যাটাস: </small>
-                <span class="status-badge ${visitor.status === 'approved' ? 'status-approved' : 
-                                          visitor.status === 'rejected' ? 'status-rejected' : 
-                                          visitor.status === 'blocked' ? 'status-blocked' : 'status-pending'}">
-                    ${visitor.status === 'approved' ? 'অনুমোদিত' : 
-                     visitor.status === 'rejected' ? 'প্রত্যাখ্যাত' : 
-                     visitor.status === 'blocked' ? 'ব্লকড' : 'পেন্ডিং'}
-                </span>
-            </div>
-        </div>
-        <div class="visitor-actions">
-            ${visitor.status === 'pending' ? `
-                <button class="action-btn approve-btn" onclick="updateVisitorStatus('${id}', 'approved')">
-                    <i class="fas fa-check"></i> অনুমোদন
-                </button>
-                <button class="action-btn reject-btn" onclick="updateVisitorStatus('${id}', 'rejected')">
-                    <i class="fas fa-times"></i> প্রত্যাখ্যান
-                </button>
-            ` : visitor.status === 'approved' ? `
-                <button class="action-btn block-btn" onclick="updateVisitorStatus('${id}', 'blocked')">
-                    <i class="fas fa-ban"></i> ব্লক
-                </button>
-            ` : visitor.status === 'blocked' ? `
-                <button class="action-btn approve-btn" onclick="updateVisitorStatus('${id}', 'approved')">
-                    <i class="fas fa-check"></i> আনব্লক
-                </button>
-            ` : ''}
-        </div>
-    `;
-    return div;
+/* =========================
+   UPLOADS
+========================= */
+let unsubscribeRecent = null;
+
+function validateTodayDate() {
+  const today = getTodayDhakaISO();
+  const picked = ui.reportDate.value;
+  if (!picked) return { ok: false, msg: "তারিখ সিলেক্ট করুন (শুধু আজ)।" };
+  if (picked !== today) return { ok: false, msg: "শুধু আজকের তারিখে আপলোড করা যাবে।" };
+  return { ok: true };
 }
 
-// Update Visitor Status
-async function updateVisitorStatus(visitorId, status) {
-    const confirmMessages = {
-        'approved': 'আপনি কি এই ভিজিটরকে অনুমোদন করতে চান?',
-        'rejected': 'আপনি কি এই ভিজিটরকে প্রত্যাখ্যান করতে চান?',
-        'blocked': 'আপনি কি এই ভিজিটরকে ব্লক করতে চান?'
-    };
-    
-    if (!confirm(confirmMessages[status] || 'আপনি কি নিশ্চিত?')) return;
-    
-    try {
-        showLoading();
-        await db.collection('users').doc(visitorId).update({
-            status: status,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            reviewedBy: currentUser.uid,
-            reviewedByEmail: currentUser.email
-        });
-        
-        showToast(`ভিজিটর সফলভাবে ${status === 'approved' ? 'অনুমোদিত' : 
-                                           status === 'rejected' ? 'প্রত্যাখ্যাত' : 'ব্লকড'} হয়েছে!`, 'success');
-        
-    } catch (error) {
-        console.error('Error updating visitor status:', error);
-        showToast('অপারেশনে ত্রুটি হয়েছে!', 'error');
-    } finally {
-        hideLoading();
-    }
+async function getZoneName(zoneId) {
+  if (!zoneId) return null;
+  const snap = await getDoc(doc(db, "zones", zoneId));
+  return snap.exists() ? (snap.data().name || null) : null;
 }
 
-// Initialize Database (First Time Setup)
-async function initializeDatabase() {
-    try {
-        // Check if master admin exists
-        const masterQuery = await db.collection('users')
-            .where('email', '==', MASTER_ADMIN_EMAIL)
-            .get();
-        
-        if (masterQuery.empty) {
-            console.log('Master admin does not exist in database yet.');
-            console.log('Please login with master admin email first.');
-        }
-        
-        // Check if collections exist, create if not
-        const collections = ['zones', 'uploads', 'admin_invites'];
-        for (const collectionName of collections) {
-            const snapshot = await db.collection(collectionName).limit(1).get();
-            if (snapshot.empty) {
-                console.log(`Collection '${collectionName}' is empty (this is normal for first time)`);
-            }
-        }
-        
-    } catch (error) {
-        console.error('Error initializing database:', error);
-    }
+function resetProgress() {
+  ui.progressWrap.classList.add("hidden");
+  ui.progressBar.style.width = "0%";
+  ui.progressText.textContent = "—";
 }
 
-// Event Listeners Setup
-function setupEventListeners() {
-    // Initialize date
-    initializeDate();
-    
-    // Check auth state
-    auth.onAuthStateChanged(async (user) => {
-        if (user) {
-            console.log('User logged in:', user.email);
-            currentUser = user;
-            userRole = await checkUserRole(user);
-            
-            updateUIForRole();
-            
-            if (userRole !== 'visitor') {
-                loginPage.classList.add('hidden');
-                dashboardPage.classList.remove('hidden');
-                initializeDashboard();
-                
-                // Initialize database (first time setup)
-                await initializeDatabase();
-            }
-        } else {
-            console.log('No user logged in');
-            currentUser = null;
-            userRole = null;
-            userData = null;
-            loginPage.classList.remove('hidden');
-            dashboardPage.classList.add('hidden');
-        }
+function showProgress(pct, text) {
+  ui.progressWrap.classList.remove("hidden");
+  ui.progressBar.style.width = `${pct}%`;
+  ui.progressText.textContent = text;
+}
+
+async function uploadFile(type) {
+  hideAlert();
+
+  if (!me.active) return showAlert("bad", "আপনার অ্যাক্সেস ব্লক করা আছে।");
+  if (!(me.role === "master" || me.role === "admin")) return showAlert("bad", "আপনার অ্যাক্সেস নেই।");
+
+  const dateCheck = validateTodayDate();
+  if (!dateCheck.ok) return showAlert("warn", dateCheck.msg);
+
+  const zoneId = ui.zoneSelect.value;
+  if (!zoneId) return showAlert("warn", "Zone সিলেক্ট করুন।");
+
+  const fileInput = type === "morning" ? ui.fileMorning : ui.fileFinal;
+  const file = fileInput.files?.[0];
+  if (!file) return showAlert("warn", "ফাইল সিলেক্ট করুন।");
+
+  const extOk = /\.(csv|xlsx|xls)$/i.test(file.name);
+  if (!extOk) return showAlert("warn", "শুধু CSV/Excel ফাইল আপলোড করা যাবে (.csv/.xlsx/.xls)।");
+
+  const today = getTodayDhakaISO();
+  const zoneName = await getZoneName(zoneId);
+
+  // Storage path
+  const safeName = file.name.replace(/[^\w.\-]+/g, "_");
+  const stamp = Date.now();
+  const path = `uploads/${today}/${zoneId}/${type}/${stamp}_${safeName}`;
+  const storageRef = ref(storage, path);
+
+  setLoading(type === "morning" ? ui.btnUploadMorning : ui.btnUploadFinal, true, "Uploading...");
+  resetProgress();
+
+  try {
+    const task = uploadBytesResumable(storageRef, file);
+    await new Promise((resolve, reject) => {
+      task.on("state_changed", (snap) => {
+        const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+        showProgress(pct, `${pct}% আপলোড হচ্ছে...`);
+      }, reject, resolve);
     });
-    
-    // Login button
-    if (googleLoginBtn) {
-        googleLoginBtn.addEventListener('click', googleLogin);
-    }
-    
-    // Logout button
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', logout);
-    }
-    
-    // Menu toggle for mobile
-    if (menuToggle && sidebar) {
-        menuToggle.addEventListener('click', () => {
-            sidebar.classList.toggle('show');
-        });
-    }
-    
-    // Menu navigation
-    if (menuItems.length > 0) {
-        menuItems.forEach(item => {
-            item.addEventListener('click', (e) => {
-                e.preventDefault();
-                
-                // Remove active class from all items
-                menuItems.forEach(i => i.classList.remove('active'));
-                sections.forEach(s => s.classList.remove('active'));
-                
-                // Add active class to clicked item
-                item.classList.add('active');
-                
-                // Show corresponding section
-                const section = item.getAttribute('data-section');
-                const sectionElement = document.getElementById(`${section}Section`);
-                if (sectionElement) {
-                    sectionElement.classList.add('active');
-                }
-                
-                // Close sidebar on mobile
-                if (window.innerWidth <= 992) {
-                    sidebar.classList.remove('show');
-                }
-            });
-        });
-    }
-    
-    // Zone Management
-    if (addZoneBtn) {
-        addZoneBtn.addEventListener('click', () => {
-            zoneForm.reset();
-            zoneIdInput.value = '';
-            const modalTitle = document.getElementById('modalTitle');
-            if (modalTitle) {
-                modalTitle.textContent = 'নতুন Zone যোগ করুন';
-            }
-            zoneModal.classList.remove('hidden');
-        });
-    }
-    
-    if (closeZoneModal) {
-        closeZoneModal.addEventListener('click', () => {
-            zoneModal.classList.add('hidden');
-            zoneForm.reset();
-        });
-    }
-    
-    if (cancelZoneBtn) {
-        cancelZoneBtn.addEventListener('click', () => {
-            zoneModal.classList.add('hidden');
-            zoneForm.reset();
-        });
-    }
-    
-    if (zoneForm) {
-        zoneForm.addEventListener('submit', saveZone);
-    }
-    
-    // File Upload
-    if (morningUploadForm) {
-        morningUploadForm.addEventListener('submit', (e) => uploadFile(e, 'morning'));
-    }
-    
-    if (finalUploadForm) {
-        finalUploadForm.addEventListener('submit', (e) => uploadFile(e, 'final'));
-    }
-    
-    // File input handlers
-    if (morningFileInput) {
-        morningFileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file && morningFileName) {
-                morningFileName.textContent = `ফাইল: ${file.name}`;
-                morningFileName.classList.add('show');
-            }
-        });
-    }
-    
-    if (finalFileInput) {
-        finalFileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file && finalFileName) {
-                finalFileName.textContent = `ফাইল: ${file.name}`;
-                finalFileName.classList.add('show');
-            }
-        });
-    }
-    
-    // Drag and drop for file upload
-    if (morningFileDrop) {
-        morningFileDrop.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            morningFileDrop.style.borderColor = '#667eea';
-            morningFileDrop.style.background = '#f0f7ff';
-        });
-        
-        morningFileDrop.addEventListener('dragleave', () => {
-            morningFileDrop.style.borderColor = '#ddd';
-            morningFileDrop.style.background = '';
-        });
-        
-        morningFileDrop.addEventListener('drop', (e) => {
-            e.preventDefault();
-            morningFileDrop.style.borderColor = '#ddd';
-            morningFileDrop.style.background = '';
-            
-            const file = e.dataTransfer.files[0];
-            if (file && morningFileInput) {
-                const dataTransfer = new DataTransfer();
-                dataTransfer.items.add(file);
-                morningFileInput.files = dataTransfer.files;
-                
-                // Trigger change event
-                morningFileInput.dispatchEvent(new Event('change'));
-            }
-        });
-    }
-    
-    if (finalFileDrop) {
-        finalFileDrop.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            finalFileDrop.style.borderColor = '#667eea';
-            finalFileDrop.style.background = '#f0f7ff';
-        });
-        
-        finalFileDrop.addEventListener('dragleave', () => {
-            finalFileDrop.style.borderColor = '#ddd';
-            finalFileDrop.style.background = '';
-        });
-        
-        finalFileDrop.addEventListener('drop', (e) => {
-            e.preventDefault();
-            finalFileDrop.style.borderColor = '#ddd';
-            finalFileDrop.style.background = '';
-            
-            const file = e.dataTransfer.files[0];
-            if (file && finalFileInput) {
-                const dataTransfer = new DataTransfer();
-                dataTransfer.items.add(file);
-                finalFileInput.files = dataTransfer.files;
-                
-                // Trigger change event
-                finalFileInput.dispatchEvent(new Event('change'));
-            }
-        });
-    }
-    
-    // Admin Management
-    if (addAdminBtn) {
-        addAdminBtn.addEventListener('click', () => {
-            if (addAdminForm) {
-                addAdminForm.classList.remove('hidden');
-            }
-        });
-    }
-    
-    if (cancelAddAdmin) {
-        cancelAddAdmin.addEventListener('click', () => {
-            if (addAdminForm) {
-                addAdminForm.classList.add('hidden');
-            }
-            if (newAdminForm) {
-                newAdminForm.reset();
-            }
-        });
-    }
-    
-    if (newAdminForm) {
-        newAdminForm.addEventListener('submit', addNewAdmin);
-    }
-    
-    // Visitor Requests Filter
-    if (visitorFilter) {
-        visitorFilter.addEventListener('change', (e) => {
-            loadVisitorRequests(e.target.value);
-        });
-    }
-    
-    // Close modals on outside click
-    window.addEventListener('click', (e) => {
-        if (e.target === zoneModal) {
-            zoneModal.classList.add('hidden');
-            zoneForm.reset();
-        }
+
+    const fileUrl = await getDownloadURL(storageRef);
+
+    await addDoc(collection(db, "uploads"), {
+      type, // "morning" | "final"
+      zoneId,
+      zoneName: zoneName || null,
+      reportDate: today,
+      fileName: file.name,
+      filePath: path,
+      fileUrl,
+      uploadedBy: me.email || null,
+      uploaderUid: me.uid || null,
+      uploaderRole: me.role || null,
+      uploadedAt: serverTimestamp()
     });
-    
-    // Close sidebar when clicking outside on mobile
-    document.addEventListener('click', (e) => {
-        if (window.innerWidth <= 992 && sidebar && sidebar.classList.contains('show')) {
-            if (!sidebar.contains(e.target) && e.target !== menuToggle) {
-                sidebar.classList.remove('show');
-            }
-        }
-    });
+
+    fileInput.value = "";
+    showProgress(100, "আপলোড সম্পন্ন ✅");
+    showAlert("ok", "ফাইল সফলভাবে আপলোড হয়েছে।");
+
+  } catch (e) {
+    showAlert("bad", `Upload failed: ${e.message}`);
+    resetProgress();
+  } finally {
+    setLoading(type === "morning" ? ui.btnUploadMorning : ui.btnUploadFinal, false);
+  }
 }
 
-// Make functions globally available for onclick handlers
-window.editZone = editZone;
-window.deleteZone = deleteZone;
-window.toggleAdminStatus = toggleAdminStatus;
-window.updateVisitorStatus = updateVisitorStatus;
+function watchRecentUploads() {
+  const today = getTodayDhakaISO();
+  const refCol = collection(db, "uploads");
+  const qy = query(refCol, where("reportDate", "==", today), orderBy("uploadedAt", "desc"), limit(20));
 
-// Initialize the application when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-    setupEventListeners();
-    console.log('Admin Panel Initialized');
-    
-    // Check if Firebase is properly initialized
-    if (!firebase.apps.length) {
-        console.error('Firebase not initialized!');
-        showError('Firebase initialization failed. Please check console.');
+  if (unsubscribeRecent) unsubscribeRecent();
+  unsubscribeRecent = onSnapshot(qy, (snap) => {
+    const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    ui.recentCount.textContent = String(rows.length);
+
+    if (!rows.length) {
+      ui.recentTbody.innerHTML = `<tr><td colspan="5" class="muted">এখনো কোনো আপলোড নেই</td></tr>`;
+      return;
     }
-});
 
-// Handle page unload
-window.addEventListener('beforeunload', () => {
-    // Clean up if needed
+    ui.recentTbody.innerHTML = rows.map(r => {
+      const time = r.uploadedAt?.toDate ? r.uploadedAt.toDate().toLocaleTimeString() : "—";
+      const typeBadge = r.type === "final"
+        ? `<span class="badge warn">final</span>`
+        : `<span class="badge ok">morning</span>`;
+      const zone = r.zoneName || r.zoneId || "—";
+      const file = r.fileUrl
+        ? `<a href="${r.fileUrl}" target="_blank" rel="noopener">${escapeHtml(r.fileName || "file")}</a>`
+        : escapeHtml(r.fileName || "—");
+      const by = r.uploadedBy || "—";
+
+      return `
+        <tr>
+          <td>${escapeHtml(time)}</td>
+          <td>${typeBadge}</td>
+          <td>${escapeHtml(zone)}</td>
+          <td>${file}</td>
+          <td>${escapeHtml(by)}</td>
+        </tr>
+      `;
+    }).join("");
+  });
+}
+
+/* =========================
+   BOOTSTRAP
+========================= */
+function initStaticUI() {
+  const today = getTodayDhakaISO();
+  ui.todayLabel.textContent = today;
+
+  // date locked to today
+  ui.reportDate.value = today;
+  ui.reportDate.min = today;
+  ui.reportDate.max = today;
+  ui.reportDate.disabled = true; // show but cannot change
+
+  // tabs click
+  ui.tabs.forEach(t => {
+    t.addEventListener("click", () => switchTab(t.dataset.tab));
+  });
+
+  // visitors filter chips
+  ui.visitorChips.forEach(ch => {
+    ch.addEventListener("click", async () => {
+      ui.visitorChips.forEach(x => x.classList.remove("active"));
+      ch.classList.add("active");
+      visitorFilter = ch.dataset.filter;
+      await loadVisitorRequests();
+    });
+  });
+
+  // buttons
+  ui.btnLogin.addEventListener("click", async () => {
+    hideAlert();
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (e) {
+      showAlert("bad", `Login failed: ${e.message}`);
+    }
+  });
+
+  ui.btnLogout.addEventListener("click", async () => {
+    hideAlert();
+    try { await signOut(auth); } catch {}
+  });
+
+  ui.btnUploadMorning.addEventListener("click", () => uploadFile("morning"));
+  ui.btnUploadFinal.addEventListener("click", () => uploadFile("final"));
+
+  ui.btnAddZone.addEventListener("click", addZone);
+  ui.btnAddAdmin.addEventListener("click", addAdminByEmail);
+
+  ui.btnRefreshVisitors.addEventListener("click", loadVisitorRequests);
+
+  // delegations: zones/admins/visitors actions
+  document.body.addEventListener("click", async (ev) => {
+    const t = ev.target;
+
+    // zones
+    const saveId = t.getAttribute?.("data-zone-save");
+    if (saveId) return saveZoneName(saveId);
+
+    const toggleId = t.getAttribute?.("data-zone-toggle");
+    if (toggleId) return toggleZone(toggleId);
+
+    const delId = t.getAttribute?.("data-zone-delete");
+    if (delId) return deleteZone(delId);
+
+    // admins
+    const at = t.getAttribute?.("data-admin-toggle");
+    if (at) return toggleAdmin(at);
+
+    const ad = t.getAttribute?.("data-admin-delete");
+    if (ad) return deleteAdmin(ad);
+
+    // visitors
+    const va = t.getAttribute?.("data-visitor-approve");
+    if (va) return setVisitorStatus(va, "approved");
+
+    const vb = t.getAttribute?.("data-visitor-block");
+    if (vb) return setVisitorStatus(vb, "blocked");
+
+    const vu = t.getAttribute?.("data-visitor-unblock");
+    if (vu) return setVisitorStatus(vu, "approved");
+  });
+}
+
+async function afterLogin(user) {
+  const email = (user.email || "").toLowerCase();
+  const name = user.displayName || "User";
+
+  me.uid = user.uid;
+  me.email = email;
+  me.name = name;
+
+  const { role, active } = await resolveRole(user);
+  me.role = role;
+  me.active = active;
+
+  setAuthedUI(user);
+  applyRoleUI();
+
+  // if no access: sign out
+  if (!me.role) {
+    showAlert("bad", "এই ইমেইলের জন্য অ্যাক্সেস নেই। Master Admin থেকে Regular Admin হিসেবে যোগ করুন।");
+    await signOut(auth);
+    return;
+  }
+  if (!me.active) {
+    showAlert("bad", "আপনার অ্যাক্সেস ব্লক করা আছে।");
+    await signOut(auth);
+    return;
+  }
+
+  // show tabs based on role already handled
+  switchTab("upload");
+
+  // watchers
+  watchZones();
+  watchRecentUploads();
+
+  // master-only watchers
+  if (me.role === "master") {
+    watchAdmins();
+  } else {
+    if (unsubscribeAdmins) { unsubscribeAdmins(); unsubscribeAdmins = null; }
+  }
+
+  // visitors tab is for all admins
+  await loadVisitorRequests();
+
+  showAlert("ok", `লগইন সফল ✅ (${me.role === "master" ? "Master Admin" : "Regular Admin"})`);
+}
+
+function onLogoutCleanup() {
+  me = { uid:null, email:null, name:null, role:null, active:false };
+  setLoggedOutUI();
+  resetProgress();
+  ui.zoneSelect.innerHTML = `<option value="">Zone সিলেক্ট করুন</option>`;
+  ui.recentTbody.innerHTML = `<tr><td colspan="5" class="muted">এখনো কোনো আপলোড নেই</td></tr>`;
+  ui.zoneTbody.innerHTML = `<tr><td colspan="4" class="muted">লোড হয়নি</td></tr>`;
+  ui.adminTbody.innerHTML = `<tr><td colspan="5" class="muted">লোড হয়নি</td></tr>`;
+  ui.visitorTbody.innerHTML = `<tr><td colspan="6" class="muted">ডাটা লোড হয়নি</td></tr>`;
+
+  if (unsubscribeZones) { unsubscribeZones(); unsubscribeZones = null; }
+  if (unsubscribeAdmins) { unsubscribeAdmins(); unsubscribeAdmins = null; }
+  if (unsubscribeRecent) { unsubscribeRecent(); unsubscribeRecent = null; }
+}
+
+initStaticUI();
+
+onAuthStateChanged(auth, async (user) => {
+  hideAlert();
+  if (!user) return onLogoutCleanup();
+  try {
+    await afterLogin(user);
+  } catch (e) {
+    showAlert("bad", `Init failed: ${e.message}`);
+    try { await signOut(auth); } catch {}
+  }
 });
