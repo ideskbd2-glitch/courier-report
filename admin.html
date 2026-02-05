@@ -1,411 +1,278 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="bn">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ক্যারিবি - অ্যাডমিন প্যানেল</title>
-    <link rel="stylesheet" href="admin.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Admin Panel - Courier Report</title>
+  <link rel="stylesheet" href="admin.css" />
 </head>
 <body>
-    <!-- লগইন পেজ -->
-    <div id="loginPage" class="page">
-        <div class="login-container">
-            <div class="login-card">
-                <div class="logo-section">
-                    <i class="fas fa-box-open logo-icon"></i>
-                    <h1>ক্যারিবি কুরিয়ার</h1>
-                    <p class="tagline">অ্যাডমিন প্যানেল</p>
-                </div>
-                
-                <div class="login-form">
-                    <h2>লগইন করুন</h2>
-                    <p class="login-subtitle">জিমেইল অ্যাকাউন্ট দিয়ে লগইন করুন</p>
-                    
-                    <button id="googleLoginBtn" class="google-login-btn">
-                        <img src="https://img.icons8.com/color/24/000000/google-logo.png" alt="Google">
-                        <span>Google দিয়ে লগইন</span>
-                    </button>
-                    
-                    <div class="admin-info">
-                        <h4><i class="fas fa-info-circle"></i> মাস্টার অ্যাডমিন</h4>
-                        <p>ebadot.hossen@carrybee.com</p>
-                        <p>এই জিমেইল দিয়ে লগইন করলে অ্যাডমিন ম্যানেজমেন্ট এক্সেস পাবেন</p>
-                    </div>
-                    
-                    <div id="loginError" class="error-message"></div>
-                    <div id="loginLoading" class="loading-spinner hidden">
-                        <i class="fas fa-spinner fa-spin"></i> লগইন হচ্ছে...
-                    </div>
-                </div>
-            </div>
-        </div>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">CR</div>
+      <div>
+        <div class="brand-title">Courier Report — Admin Panel</div>
+        <div class="brand-sub">Zone • Upload • Visitor Requests</div>
+      </div>
     </div>
 
-    <!-- অ্যাডমিন ড্যাশবোর্ড -->
-    <div id="dashboardPage" class="page hidden">
-        <!-- নেভিগেশন বার -->
-        <nav class="navbar">
-            <div class="nav-left">
-                <div class="logo">
-                    <i class="fas fa-box-open"></i>
-                    <span>ক্যারিবি অ্যাডমিন</span>
-                </div>
-                <button class="menu-toggle" id="menuToggle">
-                    <i class="fas fa-bars"></i>
-                </button>
-            </div>
-            
-            <div class="nav-right">
-                <div class="user-info">
-                    <div class="user-avatar">
-                        <i class="fas fa-user-shield"></i>
-                    </div>
-                    <div class="user-details">
-                        <span id="adminEmail" class="user-email"></span>
-                        <span id="adminRole" class="user-role"></span>
-                    </div>
-                </div>
-                <button id="logoutBtn" class="logout-btn">
-                    <i class="fas fa-sign-out-alt"></i> লগআউট
-                </button>
-            </div>
-        </nav>
-
-        <div class="container">
-            <!-- সাইডবার -->
-            <aside class="sidebar" id="sidebar">
-                <ul class="menu">
-                    <li><a href="#" data-section="dashboard" class="menu-item active">
-                        <i class="fas fa-tachometer-alt"></i>
-                        <span>ড্যাশবোর্ড</span>
-                    </a></li>
-                    
-                    <li><a href="#" data-section="zoneManagement" class="menu-item" id="zoneMenu">
-                        <i class="fas fa-map-marker-alt"></i>
-                        <span>Zone ম্যানেজমেন্ট</span>
-                    </a></li>
-                    
-                    <li><a href="#" data-section="fileUpload" class="menu-item">
-                        <i class="fas fa-cloud-upload-alt"></i>
-                        <span>ফাইল আপলোড</span>
-                    </a></li>
-                    
-                    <li><a href="#" data-section="adminManagement" class="menu-item hidden" id="adminMenu">
-                        <i class="fas fa-user-cog"></i>
-                        <span>অ্যাডমিন ম্যানেজমেন্ট</span>
-                    </a></li>
-                    
-                    <li><a href="#" data-section="visitorRequests" class="menu-item">
-                        <i class="fas fa-users"></i>
-                        <span>ভিজিটর রিকোয়েস্ট</span>
-                    </a></li>
-                </ul>
-                
-                <div class="sidebar-footer">
-                    <div class="system-status">
-                        <i class="fas fa-circle online"></i>
-                        <span>সিস্টেম অনলাইন</span>
-                    </div>
-                </div>
-            </aside>
-
-            <!-- মেইন কন্টেন্ট -->
-            <main class="main-content">
-                <!-- ড্যাশবোর্ড -->
-                <section id="dashboardSection" class="section active">
-                    <div class="section-header">
-                        <h2><i class="fas fa-tachometer-alt"></i> ড্যাশবোর্ড</h2>
-                        <div class="current-date" id="currentDate"></div>
-                    </div>
-                    
-                    <div class="stats-grid">
-                        <div class="stat-card primary">
-                            <div class="stat-icon">
-                                <i class="fas fa-map-marked-alt"></i>
-                            </div>
-                            <div class="stat-info">
-                                <h3>মোট Zone</h3>
-                                <p id="totalZones">0</p>
-                            </div>
-                        </div>
-                        
-                        <div class="stat-card success">
-                            <div class="stat-icon">
-                                <i class="fas fa-user-shield"></i>
-                            </div>
-                            <div class="stat-info">
-                                <h3>অ্যাক্টিভ অ্যাডমিন</h3>
-                                <p id="totalAdmins">0</p>
-                            </div>
-                        </div>
-                        
-                        <div class="stat-card warning">
-                            <div class="stat-icon">
-                                <i class="fas fa-clock"></i>
-                            </div>
-                            <div class="stat-info">
-                                <h3>পেন্ডিং রিকোয়েস্ট</h3>
-                                <p id="pendingRequests">0</p>
-                            </div>
-                        </div>
-                        
-                        <div class="stat-card info">
-                            <div class="stat-icon">
-                                <i class="fas fa-file-upload"></i>
-                            </div>
-                            <div class="stat-info">
-                                <h3>আজকের আপলোড</h3>
-                                <p id="todayUploads">0</p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="recent-activity">
-                        <h3><i class="fas fa-history"></i> সাম্প্রতিক কার্যক্রম</h3>
-                        <div class="activity-list" id="activityList">
-                            <!-- Activities will be loaded here -->
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Zone ম্যানেজমেন্ট -->
-                <section id="zoneManagementSection" class="section hidden">
-                    <div class="section-header">
-                        <h2><i class="fas fa-map-marker-alt"></i> Zone ম্যানেজমেন্ট</h2>
-                        <button id="addZoneBtn" class="btn-primary">
-                            <i class="fas fa-plus-circle"></i> নতুন Zone
-                        </button>
-                    </div>
-                    
-                    <div class="zone-management">
-                        <div class="zone-list-container">
-                            <h3><i class="fas fa-list"></i> Zone লিস্ট</h3>
-                            <div id="zonesList" class="zones-list">
-                                <!-- Zones will be loaded here -->
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- ফাইল আপলোড -->
-                <section id="fileUploadSection" class="section hidden">
-                    <div class="section-header">
-                        <h2><i class="fas fa-cloud-upload-alt"></i> ফাইল আপলোড</h2>
-                        <div class="upload-instructions">
-                            <i class="fas fa-info-circle"></i>
-                            <span>শুধু আজকের তারিখের ফাইল আপলোড করুন</span>
-                        </div>
-                    </div>
-                    
-                    <div class="upload-container">
-                        <div class="upload-card">
-                            <div class="upload-header">
-                                <i class="fas fa-sun"></i>
-                                <h3>মর্নিং ফাইল আপলোড</h3>
-                            </div>
-                            <form id="morningUploadForm" class="upload-form">
-                                <div class="form-group">
-                                    <label for="morningZoneSelect"><i class="fas fa-map-marker-alt"></i> Zone নির্বাচন করুন</label>
-                                    <select id="morningZoneSelect" class="form-select" required>
-                                        <option value="">Zone সিলেক্ট করুন</option>
-                                        <!-- Zones will be populated by JS -->
-                                    </select>
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label for="morningDate"><i class="fas fa-calendar-alt"></i> তারিখ</label>
-                                    <input type="date" id="morningDate" class="form-input" required>
-                                    <small class="form-help">শুধু আজকের তারিখ সিলেক্ট করা যাবে</small>
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label for="morningFile"><i class="fas fa-file-excel"></i> CSV/Excel ফাইল</label>
-                                    <div class="file-upload-area" id="morningFileDrop">
-                                        <i class="fas fa-cloud-upload-alt"></i>
-                                        <p>ফাইল এখানে ড্রপ করুন অথবা ক্লিক করুন</p>
-                                        <small>শুধু .csv, .xlsx, .xls ফাইল অনুমোদিত</small>
-                                        <input type="file" id="morningFile" accept=".csv,.xlsx,.xls" required>
-                                    </div>
-                                    <div id="morningFileName" class="file-name-display"></div>
-                                </div>
-                                
-                                <button type="submit" class="btn-upload">
-                                    <i class="fas fa-upload"></i> মর্নিং ফাইল আপলোড
-                                </button>
-                            </form>
-                        </div>
-                        
-                        <div class="upload-card">
-                            <div class="upload-header">
-                                <i class="fas fa-flag-checkered"></i>
-                                <h3>ফাইনাল এসাইন ফাইল আপলোড</h3>
-                            </div>
-                            <form id="finalUploadForm" class="upload-form">
-                                <div class="form-group">
-                                    <label for="finalZoneSelect"><i class="fas fa-map-marker-alt"></i> Zone নির্বাচন করুন</label>
-                                    <select id="finalZoneSelect" class="form-select" required>
-                                        <option value="">Zone সিলেক্ট করুন</option>
-                                        <!-- Zones will be populated by JS -->
-                                    </select>
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label for="finalDate"><i class="fas fa-calendar-alt"></i> তারিখ</label>
-                                    <input type="date" id="finalDate" class="form-input" required>
-                                    <small class="form-help">শুধু আজকের তারিখ সিলেক্ট করা যাবে</small>
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label for="finalFile"><i class="fas fa-file-excel"></i> CSV/Excel ফাইল</label>
-                                    <div class="file-upload-area" id="finalFileDrop">
-                                        <i class="fas fa-cloud-upload-alt"></i>
-                                        <p>ফাইল এখানে ড্রপ করুন অথবা ক্লিক করুন</p>
-                                        <small>শুধু .csv, .xlsx, .xls ফাইল অনুমোদিত</small>
-                                        <input type="file" id="finalFile" accept=".csv,.xlsx,.xls" required>
-                                    </div>
-                                    <div id="finalFileName" class="file-name-display"></div>
-                                </div>
-                                
-                                <button type="submit" class="btn-upload">
-                                    <i class="fas fa-upload"></i> ফাইনাল ফাইল আপলোড
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                    
-                    <div class="recent-uploads">
-                        <h3><i class="fas fa-history"></i> সাম্প্রতিক আপলোড</h3>
-                        <div id="uploadsList" class="uploads-list">
-                            <!-- Uploads will be loaded here -->
-                        </div>
-                    </div>
-                </section>
-
-                <!-- অ্যাডমিন ম্যানেজমেন্ট -->
-                <section id="adminManagementSection" class="section hidden">
-                    <div class="section-header">
-                        <h2><i class="fas fa-user-cog"></i> অ্যাডমিন ম্যানেজমেন্ট</h2>
-                        <button id="addAdminBtn" class="btn-primary">
-                            <i class="fas fa-user-plus"></i> নতুন অ্যাডমিন
-                        </button>
-                    </div>
-                    
-                    <div class="add-admin-form hidden" id="addAdminForm">
-                        <h3><i class="fas fa-user-plus"></i> নতুন অ্যাডমিন যোগ করুন</h3>
-                        <form id="newAdminForm">
-                            <div class="form-group">
-                                <label for="adminEmailInput"><i class="fas fa-envelope"></i> জিমেইল এড্রেস</label>
-                                <input type="email" id="adminEmailInput" class="form-input" 
-                                       placeholder="example@carrybee.com" required>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label><i class="fas fa-user-tag"></i> রোল</label>
-                                <div class="radio-group">
-                                    <label class="radio-label">
-                                        <input type="radio" name="adminRole" value="regular_admin" checked>
-                                        <span class="radio-text">রেগুলার অ্যাডমিন</span>
-                                    </label>
-                                    <small class="form-help">রেগুলার অ্যাডমিন শুধু ফাইল আপলোড করতে পারবে</small>
-                                </div>
-                            </div>
-                            
-                            <div class="form-actions">
-                                <button type="submit" class="btn-success">
-                                    <i class="fas fa-check"></i> অ্যাডমিন যোগ করুন
-                                </button>
-                                <button type="button" id="cancelAddAdmin" class="btn-secondary">
-                                    <i class="fas fa-times"></i> বাতিল
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                    
-                    <div class="admin-list-container">
-                        <h3><i class="fas fa-users"></i> অ্যাডমিন লিস্ট</h3>
-                        <div id="adminsList" class="admins-list">
-                            <!-- Admins will be loaded here -->
-                        </div>
-                    </div>
-                </section>
-
-                <!-- ভিজিটর রিকোয়েস্ট -->
-                <section id="visitorRequestsSection" class="section hidden">
-                    <div class="section-header">
-                        <h2><i class="fas fa-users"></i> ভিজিটর রিকোয়েস্ট ম্যানেজমেন্ট</h2>
-                        <div class="filter-controls">
-                            <select id="visitorFilter" class="form-select">
-                                <option value="all">সকল রিকোয়েস্ট</option>
-                                <option value="pending">পেন্ডিং</option>
-                                <option value="approved">এপ্রুভড</option>
-                                <option value="rejected">রিজেক্টেড</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <div class="visitor-requests-container">
-                        <div id="visitorsList" class="visitors-list">
-                            <!-- Visitor requests will be loaded here -->
-                        </div>
-                    </div>
-                </section>
-            </main>
+    <div class="top-actions">
+      <div class="pill ghost" id="envPill">Firebase</div>
+      <button class="btn primary" id="btnLogin">Google দিয়ে লগইন</button>
+      <div class="user-chip hidden" id="userChip">
+        <div class="avatar" id="avatar">U</div>
+        <div class="user-meta">
+          <div class="user-name" id="userName">—</div>
+          <div class="user-email" id="userEmail">—</div>
         </div>
-
-        <!-- Modals and Popups -->
-        <div id="zoneModal" class="modal hidden">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3 id="modalTitle">নতুন Zone যোগ করুন</h3>
-                    <button class="modal-close" id="closeZoneModal">&times;</button>
-                </div>
-                <form id="zoneForm">
-                    <input type="hidden" id="zoneId">
-                    <div class="form-group">
-                        <label for="zoneName"><i class="fas fa-map-marker-alt"></i> Zone নাম</label>
-                        <input type="text" id="zoneName" class="form-input" 
-                               placeholder="Zone A, Zone B, ইত্যাদি" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="zoneDescription"><i class="fas fa-info-circle"></i> বর্ণনা</label>
-                        <textarea id="zoneDescription" class="form-textarea" 
-                                  placeholder="Zone সম্পর্কে সংক্ষিপ্ত বর্ণনা"></textarea>
-                    </div>
-                    <div class="form-actions">
-                        <button type="submit" class="btn-success" id="saveZoneBtn">
-                            <i class="fas fa-save"></i> সেভ করুন
-                        </button>
-                        <button type="button" class="btn-secondary" id="cancelZoneBtn">
-                            <i class="fas fa-times"></i> বাতিল
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <div id="messageToast" class="toast hidden">
-            <div class="toast-content">
-                <i class="fas fa-check-circle"></i>
-                <span id="toastMessage">অপারেশন সফল হয়েছে!</span>
-            </div>
-        </div>
-
-        <div id="loadingOverlay" class="loading-overlay hidden">
-            <div class="loading-content">
-                <i class="fas fa-spinner fa-spin"></i>
-                <p>লোড হচ্ছে...</p>
-            </div>
-        </div>
+        <button class="btn" id="btnLogout">লগআউট</button>
+      </div>
     </div>
+  </header>
 
-    <!-- Firebase and App Scripts -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
-    <script src="admin.js"></script>
+  <main class="container">
+    <div id="alert" class="alert hidden"></div>
+
+    <section class="hero">
+      <div class="hero-left">
+        <h1>অ্যাডমিন ড্যাশবোর্ড</h1>
+        <p class="muted">
+          Master Admin: Zone + Admin Manage + Upload + Visitor Approve/Block<br/>
+          Regular Admin: শুধু Upload + Visitor Approve/Block
+        </p>
+      </div>
+      <div class="hero-right">
+        <div class="stat">
+          <div class="stat-label">আজকের তারিখ (Dhaka)</div>
+          <div class="stat-value" id="todayLabel">—</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">আপনার রোল</div>
+          <div class="stat-value">
+            <span class="pill" id="rolePill">—</span>
+            <span class="pill ghost" id="statusPill">—</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="app" class="hidden">
+      <nav class="tabs">
+        <button class="tab active" data-tab="upload">📤 Upload</button>
+        <button class="tab" data-tab="visitors">✅ Visitor Requests</button>
+        <button class="tab hidden" id="tabZones" data-tab="zones">🗺️ Zones</button>
+        <button class="tab hidden" id="tabAdmins" data-tab="admins">👤 Admins</button>
+      </nav>
+
+      <!-- UPLOAD -->
+      <section class="panel active" id="panel-upload">
+        <div class="grid">
+          <div class="card">
+            <div class="card-head">
+              <h2>ফাইল আপলোড</h2>
+              <span class="pill warn">Today only</span>
+            </div>
+
+            <div class="row">
+              <div class="field">
+                <label>তারিখ (শুধু আজ)</label>
+                <input type="date" id="reportDate" class="input" />
+                <div class="hint">আজ ছাড়া অন্য কোনো তারিখে আপলোড করা যাবে না।</div>
+              </div>
+
+              <div class="field">
+                <label>Zone সিলেক্ট</label>
+                <select id="zoneSelect" class="input"></select>
+                <div class="hint">আপলোড করার সময় Zone সিলেক্ট বাধ্যতামূলক।</div>
+              </div>
+            </div>
+
+            <div class="split">
+              <div class="subcard">
+                <h3>Morning File (CSV/Excel)</h3>
+                <p class="muted small">Accepted: .csv, .xlsx, .xls</p>
+                <input id="fileMorning" class="input" type="file" accept=".csv,.xlsx,.xls" />
+                <button class="btn primary full" id="btnUploadMorning">Morning আপলোড</button>
+              </div>
+
+              <div class="subcard">
+                <h3>Final Assign File (CSV/Excel)</h3>
+                <p class="muted small">Accepted: .csv, .xlsx, .xls</p>
+                <input id="fileFinal" class="input" type="file" accept=".csv,.xlsx,.xls" />
+                <button class="btn primary full" id="btnUploadFinal">Final আপলোড</button>
+              </div>
+            </div>
+
+            <div class="progress-wrap hidden" id="progressWrap">
+              <div class="progress">
+                <div class="bar" id="progressBar" style="width:0%"></div>
+              </div>
+              <div class="muted small" id="progressText">—</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <h2>আজকের আপলোড (সাম্প্রতিক)</h2>
+              <span class="pill ghost" id="recentCount">0</span>
+            </div>
+
+            <div class="table-wrap">
+              <table class="table" id="recentTable">
+                <thead>
+                  <tr>
+                    <th>সময়</th>
+                    <th>টাইপ</th>
+                    <th>Zone</th>
+                    <th>ফাইল</th>
+                    <th>Uploader</th>
+                  </tr>
+                </thead>
+                <tbody id="recentTbody">
+                  <tr><td colspan="5" class="muted">এখনো কোনো আপলোড নেই</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="hint mt8">
+              Visitor page পরে বানালে date+zone+type অনুযায়ী রিপোর্ট দেখানো যাবে।
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VISITORS -->
+      <section class="panel" id="panel-visitors">
+        <div class="card">
+          <div class="card-head">
+            <h2>Visitor Requests</h2>
+            <div class="right">
+              <button class="btn" id="btnRefreshVisitors">রিফ্রেশ</button>
+              <span class="pill ghost" id="visitorCount">0</span>
+            </div>
+          </div>
+
+          <div class="filters">
+            <button class="chip active" data-filter="pending">Pending</button>
+            <button class="chip" data-filter="approved">Approved</button>
+            <button class="chip" data-filter="blocked">Blocked</button>
+            <button class="chip" data-filter="all">All</button>
+          </div>
+
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>ইমেইল</th>
+                  <th>নাম</th>
+                  <th>Hub</th>
+                  <th>স্ট্যাটাস</th>
+                  <th>রিকোয়েস্ট টাইম</th>
+                  <th>অ্যাকশন</th>
+                </tr>
+              </thead>
+              <tbody id="visitorTbody">
+                <tr><td colspan="6" class="muted">ডাটা লোড হয়নি</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="hint mt8">
+            Approve করলে visitor পরে লগইন করে Visitor page দেখতে পারবে। Block করলে অ্যাক্সেস বন্ধ হবে।
+          </div>
+        </div>
+      </section>
+
+      <!-- ZONES (MASTER ONLY) -->
+      <section class="panel" id="panel-zones">
+        <div class="card">
+          <div class="card-head">
+            <h2>Zone Management</h2>
+            <span class="pill warn">Master only</span>
+          </div>
+
+          <div class="row">
+            <div class="field grow">
+              <label>নতুন Zone নাম</label>
+              <input class="input" id="newZoneName" placeholder="যেমন: Zone A / Dhaka North" />
+            </div>
+            <div class="field">
+              <label>&nbsp;</label>
+              <button class="btn primary" id="btnAddZone">Zone Add</button>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Zone</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="zoneTbody">
+                <tr><td colspan="4" class="muted">লোড হচ্ছে…</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="hint mt8">
+            Delete করলে স্থায়ীভাবে মুছে যাবে। নিরাপদ উপায় হলো “Deactivate”.
+          </div>
+        </div>
+      </section>
+
+      <!-- ADMINS (MASTER ONLY) -->
+      <section class="panel" id="panel-admins">
+        <div class="card">
+          <div class="card-head">
+            <h2>Admin Management</h2>
+            <span class="pill warn">Master only</span>
+          </div>
+
+          <div class="row">
+            <div class="field grow">
+              <label>Regular Admin Gmail</label>
+              <input class="input" id="newAdminEmail" placeholder="example@gmail.com" />
+              <div class="hint">এই ইমেইল লগইন করলে Regular Admin হিসেবে upload + visitor approve/block করতে পারবে।</div>
+            </div>
+            <div class="field">
+              <label>&nbsp;</label>
+              <button class="btn primary" id="btnAddAdmin">Admin Add</button>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>ইমেইল</th>
+                  <th>রোল</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="adminTbody">
+                <tr><td colspan="5" class="muted">লোড হচ্ছে…</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="hint mt8">
+            Block/Deactivate করলে ঐ admin আর সিস্টেমে ঢুকতে পারবে না।
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <footer class="footer">
+      <span class="muted">© Courier Report — Admin Panel</span>
+    </footer>
+  </main>
+
+  <script type="module" src="admin.js"></script>
 </body>
 </html>
